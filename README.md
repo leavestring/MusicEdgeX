@@ -14,6 +14,7 @@
   <img src="https://img.shields.io/badge/version-v1.0.0-important" />
   <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-blue" />
   <img src="https://img.shields.io/badge/.NET-10.0-purple" />
+  <img src="https://img.shields.io/badge/distribution-self--contained-brightgreen" />
   <img src="https://img.shields.io/badge/license-MIT-green" />
   <img src="https://img.shields.io/badge/status-active%20development-brightgreen" />
 </p>
@@ -65,9 +66,9 @@
 
 ## 快速开始
 
-**环境要求：** Windows 10 1809+ 或 Windows 11 · [.NET 10.0 Runtime](https://dotnet.microsoft.com/download/dotnet/10.0)
+**环境要求：** Windows 10 1809+ 或 Windows 11
 
-**下载：** 前往 [Releases](https://github.com/leavestring/MusicEdgeX/releases) 下载 `MusicEdgeX.exe`，双击运行。
+**下载：** 前往 [Releases](https://github.com/leavestring/MusicEdgeX/releases) 下载 `MusicEdgeX_v1.0.0.zip`，解压即用，无需安装任何运行时。
 
 **从源码构建：**
 ```bash
@@ -137,9 +138,9 @@ Play / Pause · Previous / Next · Shuffle · Favorite · Volume
 
 ## Getting Started
 
-**Requirements:** Windows 10 1809+ or Windows 11 · [.NET 10.0 Runtime](https://dotnet.microsoft.com/download/dotnet/10.0)
+**Requirements:** Windows 10 1809+ or Windows 11
 
-**Download:** Grab `MusicEdgeX.exe` from [Releases](https://github.com/leavestring/MusicEdgeX/releases), double-click to run.
+**Download:** Grab `MusicEdgeX_v1.0.0.zip` from [Releases](https://github.com/leavestring/MusicEdgeX/releases), unzip and double-click `MusicEdgeX.exe` — no runtime installation needed.
 
 **Build from source:**
 ```bash
