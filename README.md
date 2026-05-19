@@ -11,9 +11,11 @@
 </p>
 
 <p align="center">
+  <img src="https://img.shields.io/badge/version-v1.0.0-important" />
   <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-blue" />
   <img src="https://img.shields.io/badge/.NET-10.0-purple" />
   <img src="https://img.shields.io/badge/license-MIT-green" />
+  <img src="https://img.shields.io/badge/status-active%20development-brightgreen" />
 </p>
 
 <p align="center">
@@ -84,12 +86,14 @@ dotnet build -c Release
 
 ## 路线图
 
-- [ ] 支持左边缘吸附
-- [ ] 桌面歌词显示
-- [ ] 自定义热键
-- [ ] 频谱可视化
-- [ ] 多播放器切换
-- [ ] 迷你模式
+> 🚧 **v1 是起点，不是终点。** 后续版本将持续演进，欢迎 Star & Watch 关注更新。
+
+| 版本 | 计划内容 | 状态 |
+|------|---------|:--:|
+| **v1.0** | 右边缘吸附 · SMTC 同步 · 媒体键控制 · 托盘图标 | ✅ 已发布 |
+| **v1.1** | 左边缘吸附 · 自定义热键 · 迷你模式 | 🚧 开发中 |
+| **v1.2** | 桌面歌词 · 频谱可视化 · 多播放器切换 | 📋 计划中 |
+| **v2.0** | 插件系统 · 皮肤主题 · macOS 支持 | 💡 探索中 |
 
 </details>
 
@@ -154,12 +158,14 @@ dotnet build -c Release
 
 ## Roadmap
 
-- [ ] Left-edge support
-- [ ] Desktop lyrics overlay
-- [ ] Custom hotkeys
-- [ ] Audio spectrum visualizer
-- [ ] Multi-player switching
-- [ ] Mini mode (cover art + progress bar only)
+> 🚧 **v1 is just the beginning.** More features are on the way — Star & Watch to stay tuned.
+
+| Version | Planned Features | Status |
+|---------|-----------------|:--:|
+| **v1.0** | Right-edge trigger · SMTC sync · Media keys · Tray icon | ✅ Released |
+| **v1.1** | Left-edge support · Custom hotkeys · Mini mode | 🚧 In progress |
+| **v1.2** | Desktop lyrics · Spectrum visualizer · Multi-player | 📋 Planned |
+| **v2.0** | Plugin system · Theme engine · macOS support | 💡 Exploring |
 
 </details>
 
