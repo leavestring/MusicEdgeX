@@ -1,119 +1,154 @@
 using System.Diagnostics;
 using System.IO;
-using System.Runtime.InteropServices;
+using System.Windows;
 
 namespace MusicEdge.Services;
 
 /// <summary>
-/// QQ Music specific operations that cannot be done via SMTC/media keys.
-/// Currently: "Like/Favorite" functionality via keyboard shortcut simulation.
-/// QQ Music default shortcut for "Like" is Ctrl+Alt+F (may vary by version).
+/// QQ Music specific operations that SMTC does not expose.
 /// </summary>
-public class QQMusicHotkeyService
+public sealed class QQMusicHotkeyService
 {
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr FindWindow(string? lpClassName, string? lpWindowName);
-
-    [DllImport("user32.dll")]
-    private static extern bool SetForegroundWindow(IntPtr hWnd);
-
-    [DllImport("user32.dll")]
-    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-
+    private const ushort VK_CONTROL = 0x11;
+    private const ushort VK_MENU = 0x12;
+    private const ushort VK_F = 0x46;
     private const uint KEYEVENTF_KEYUP = 0x0002;
-    private const byte VK_CONTROL = 0x11;
-    private const byte VK_MENU = 0x12;    // Alt
-    private const byte VK_F = 0x46;
+
     private const int SW_RESTORE = 9;
-    private const int SW_SHOW = 5;
 
     /// <summary>
-    /// Simulates Ctrl+Alt+F (QQ Music default "Like" shortcut).
-    /// This sends the keyboard shortcut globally.
+    /// Triggers QQ Music's global "like" shortcut (Ctrl+Alt+F) only when the
+    /// player is actually running, so the chord never leaks into other apps.
     /// </summary>
-    public void ToggleLike()
+    public bool ToggleLike()
     {
-        // Press Ctrl+Alt+F
-        keybd_event(VK_CONTROL, 0, 0, UIntPtr.Zero);
-        keybd_event(VK_MENU, 0, 0, UIntPtr.Zero);
-        Thread.Sleep(20);
-        keybd_event(VK_F, 0, 0, UIntPtr.Zero);
-        Thread.Sleep(30);
+        if (!IsQQMusicRunning()) return false;
 
-        // Release in reverse order
-        keybd_event(VK_F, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
-        keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
-        keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
+        MediaKeyService.SendInputs(
+            MediaKeyService.CreateKey(VK_CONTROL, 0),
+            MediaKeyService.CreateKey(VK_MENU, 0),
+            MediaKeyService.CreateKey(VK_F, 0),
+            MediaKeyService.CreateKey(VK_F, KEYEVENTF_KEYUP),
+            MediaKeyService.CreateKey(VK_MENU, KEYEVENTF_KEYUP),
+            MediaKeyService.CreateKey(VK_CONTROL, KEYEVENTF_KEYUP));
+
+        return true;
     }
 
-    /// <summary>
-    /// Check if QQ Music process is running.
-    /// </summary>
     public static bool IsQQMusicRunning()
     {
         var processes = Process.GetProcessesByName("QQMusic");
-        return processes.Length > 0;
-    }
-
-    /// <summary>
-    /// Try to launch QQ Music.
-    /// </summary>
-    public static void LaunchQQMusic()
-    {
         try
         {
-            // Common QQ Music install paths
-            string[] possiblePaths =
-            [
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
-                    @"Tencent\QQMusic\QQMusic.exe"),
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
-                    @"Tencent\QQMusic\QQMusic.exe"),
-            ];
+            return processes.Length > 0;
+        }
+        finally
+        {
+            foreach (var process in processes)
+                process.Dispose();
+        }
+    }
 
-            foreach (var path in possiblePaths)
+    public static bool LaunchQQMusic()
+    {
+        foreach (var path in GetCandidatePaths())
+        {
+            if (!File.Exists(path)) continue;
+
+            try
             {
-                if (File.Exists(path))
-                {
-                    Process.Start(new ProcessStartInfo
-                    {
-                        FileName = path,
-                        UseShellExecute = true
-                    });
-                    return;
-                }
+                Process.Start(new ProcessStartInfo { FileName = path, UseShellExecute = true });
+                return true;
             }
+            catch { }
+        }
 
-            // Fallback: try to find it
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = "QQMusic.exe",
-                UseShellExecute = true
-            });
+        try
+        {
+            Process.Start(new ProcessStartInfo { FileName = "QQMusic.exe", UseShellExecute = true });
+            return true;
         }
         catch
         {
-            // Could not launch
+            return false;
         }
     }
 
-    /// <summary>
-    /// Bring QQ Music window to foreground.
-    /// </summary>
-    public static void BringQQMusicToFront()
+    public static bool BringQQMusicToFront()
+    {
+        var processes = Process.GetProcessesByName("QQMusic");
+        try
+        {
+            foreach (var process in processes)
+            {
+                if (process.MainWindowHandle == IntPtr.Zero) continue;
+
+                ShowWindow(process.MainWindowHandle, SW_RESTORE);
+                SetForegroundWindow(process.MainWindowHandle);
+                return true;
+            }
+            return false;
+        }
+        finally
+        {
+            foreach (var process in processes)
+                process.Dispose();
+        }
+    }
+
+    public static bool OpenPlayer(string sourceAppId, string sourceName)
+    {
+        if (sourceName == "QQ音乐" || sourceAppId.Contains("QQMusic", StringComparison.OrdinalIgnoreCase))
+            return BringQQMusicToFront() || LaunchQQMusic();
+
+        if (sourceName == "Spotify" || sourceAppId.Contains("Spotify", StringComparison.OrdinalIgnoreCase))
+            return TryStart("spotify:");
+
+        if (sourceName == "网易云音乐" || sourceAppId.Contains("CloudMusic", StringComparison.OrdinalIgnoreCase))
+        {
+            foreach (var path in new[]
+                     {
+                         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                             @"Netease\CloudMusic\cloudmusic.exe"),
+                         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+                             @"Netease\CloudMusic\cloudmusic.exe"),
+                         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+                             @"Netease\CloudMusic\cloudmusic.exe")
+                     })
+            {
+                if (TryStart(path)) return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool TryStart(string target)
     {
         try
         {
-            var handle = FindWindow(null, "QQ音乐");
-            if (handle != IntPtr.Zero)
-            {
-                ShowWindow(handle, SW_RESTORE);
-                SetForegroundWindow(handle);
-            }
+            Process.Start(new ProcessStartInfo { FileName = target, UseShellExecute = true });
+            return true;
         }
-        catch { }
+        catch
+        {
+            return false;
+        }
     }
+
+    private static IEnumerable<string> GetCandidatePaths()
+    {
+        yield return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+            @"Tencent\QQMusic\QQMusic.exe");
+        yield return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+            @"Tencent\QQMusic\QQMusic.exe");
+        yield return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            @"Tencent\QQMusic\QQMusic.exe");
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 }

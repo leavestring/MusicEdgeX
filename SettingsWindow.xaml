@@ -4,113 +4,453 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        Title="MusicEdge 设置"
-        WindowStyle="SingleBorderWindow"
+        Title="MusicEdgeX 设置"
+        Width="460" Height="700"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
         ResizeMode="NoResize"
-        Width="420" Height="480"
-        WindowStartupLocation="CenterOwner"
-        Background="#1E1E2E"
-        Foreground="#EAEAEA">
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterScreen"
+        FontFamily="Segoe UI Variable Text, Segoe UI"
+        UseLayoutRounding="True"
+        TextOptions.TextRenderingMode="Grayscale"
+        TextOptions.TextFormattingMode="Display">
 
     <Window.Resources>
-        <Style TargetType="CheckBox">
-            <Setter Property="Foreground" Value="#EAEAEA"/>
-            <Setter Property="FontSize" Value="13"/>
-            <Setter Property="Margin" Value="0,8"/>
-        </Style>
-        <Style TargetType="Slider">
-            <Setter Property="Height" Value="28"/>
-            <Setter Property="Margin" Value="0,4,0,12"/>
-        </Style>
-        <Style TargetType="TextBlock">
-            <Setter Property="Foreground" Value="#A0A0B0"/>
-            <Setter Property="FontSize" Value="12"/>
-        </Style>
-        <Style x:Key="SectionTitle" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="#E94560"/>
-            <Setter Property="FontSize" Value="14"/>
+        <SolidColorBrush x:Key="TextPrimary" Color="#FFF1ECE3"/>
+        <SolidColorBrush x:Key="TextSecondary" Color="#FFA09B92"/>
+        <SolidColorBrush x:Key="TextMuted" Color="#FF6A665F"/>
+        <SolidColorBrush x:Key="AccentBrush" Color="#FFC9604A"/>
+        <SolidColorBrush x:Key="CardBrush" Color="#0AFFFFFF"/>
+        <SolidColorBrush x:Key="CardBorder" Color="#14FFFFFF"/>
+
+        <DrawingBrush x:Key="GrainBrush" TileMode="Tile" Viewport="0,0,5,5"
+                      ViewportUnits="Absolute">
+            <DrawingBrush.Drawing>
+                <DrawingGroup>
+                    <GeometryDrawing Brush="#00000000" Geometry="M0,0 H5 V5 H0 Z"/>
+                    <GeometryDrawing Brush="#06FFFFFF" Geometry="M0,0 H1 V1 H0 Z"/>
+                </DrawingGroup>
+            </DrawingBrush.Drawing>
+        </DrawingBrush>
+
+        <Style x:Key="Kicker" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource TextMuted}"/>
+            <Setter Property="FontSize" Value="8.5"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Margin" Value="0,16,0,8"/>
+            <Setter Property="Typography.Capitals" Value="AllSmallCaps"/>
+        </Style>
+
+        <Style x:Key="SectionTitle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,3,0,10"/>
+        </Style>
+
+        <Style x:Key="FieldLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
+            <Setter Property="FontSize" Value="11"/>
+        </Style>
+
+        <Style x:Key="HintText" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource TextMuted}"/>
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+
+        <Style x:Key="IconButton" TargetType="Button">
+            <Setter Property="Width" Value="28"/>
+            <Setter Property="Height" Value="28"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bg" CornerRadius="7" Background="Transparent">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="#12FFFFFF"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="EdgeRadio" TargetType="RadioButton">
+            <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
+            <Setter Property="FontSize" Value="11.5"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Bg" Padding="18,7" CornerRadius="8"
+                                Background="#0CFFFFFF" BorderBrush="#16FFFFFF" BorderThickness="1">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Bg" Property="Background"
+                                        Value="{StaticResource AccentBrush}"/>
+                                <Setter TargetName="Bg" Property="BorderBrush" Value="#00FFFFFF"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="#14FFFFFF"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="SwitchCheck" TargetType="CheckBox">
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+            <Setter Property="FontSize" Value="11.5"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Margin" Value="0,0,0,12"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <ContentPresenter VerticalAlignment="Center"/>
+                            <Border x:Name="Track" Grid.Column="1" Width="38" Height="22"
+                                    CornerRadius="11" Background="#22FFFFFF">
+                                <Ellipse x:Name="Knob" Width="16" Height="16" Fill="#FFB4B4C6"
+                                         HorizontalAlignment="Left" Margin="3,0,0,0"/>
+                            </Border>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Track" Property="Background"
+                                        Value="{StaticResource AccentBrush}"/>
+                                <Setter TargetName="Knob" Property="HorizontalAlignment" Value="Right"/>
+                                <Setter TargetName="Knob" Property="Margin" Value="0,0,3,0"/>
+                                <Setter TargetName="Knob" Property="Fill" Value="White"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Track" Property="Opacity" Value="0.86"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="SettingsSlider" TargetType="Slider">
+            <Setter Property="Height" Value="20"/>
+            <Setter Property="IsMoveToPointEnabled" Value="True"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Slider">
+                        <Grid>
+                            <Track x:Name="PART_Track" VerticalAlignment="Center">
+                                <Track.DecreaseRepeatButton>
+                                    <RepeatButton Command="{x:Static Slider.DecreaseLarge}" Focusable="False">
+                                        <RepeatButton.Template>
+                                            <ControlTemplate TargetType="RepeatButton">
+                                                <Grid Height="20" Background="Transparent">
+                                                    <Border Height="3" VerticalAlignment="Center"
+                                                            Background="{StaticResource AccentBrush}"/>
+                                                </Grid>
+                                            </ControlTemplate>
+                                        </RepeatButton.Template>
+                                    </RepeatButton>
+                                </Track.DecreaseRepeatButton>
+                                <Track.Thumb>
+                                    <Thumb Width="12" Height="12">
+                                        <Thumb.Template>
+                                            <ControlTemplate TargetType="Thumb">
+                                                <Ellipse Fill="{StaticResource TextPrimary}"
+                                                         Width="12" Height="12"/>
+                                            </ControlTemplate>
+                                        </Thumb.Template>
+                                    </Thumb>
+                                </Track.Thumb>
+                                <Track.IncreaseRepeatButton>
+                                    <RepeatButton Command="{x:Static Slider.IncreaseLarge}" Focusable="False">
+                                        <RepeatButton.Template>
+                                            <ControlTemplate TargetType="RepeatButton">
+                                                <Grid Height="20" Background="Transparent">
+                                                    <Border Height="3" VerticalAlignment="Center"
+                                                            Background="#26FFFFFF"/>
+                                                </Grid>
+                                            </ControlTemplate>
+                                        </RepeatButton.Template>
+                                    </RepeatButton>
+                                </Track.IncreaseRepeatButton>
+                            </Track>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="SettingsTextBox" TargetType="TextBox">
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="Background" Value="#0CFFFFFF"/>
+            <Setter Property="BorderBrush" Value="#16FFFFFF"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+            <Setter Property="CaretBrush" Value="{StaticResource TextPrimary}"/>
+            <Setter Property="FontSize" Value="11.5"/>
+            <Setter Property="Padding" Value="9,0"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border x:Name="Bg" CornerRadius="8" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}">
+                            <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"
+                                          VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Bg" Property="BorderBrush" Value="#77C9604A"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="PrimaryButton" TargetType="Button">
+            <Setter Property="Height" Value="34"/>
+            <Setter Property="Padding" Value="22,0"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontSize" Value="11.5"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bg" CornerRadius="9" Background="{StaticResource AccentBrush}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bg" Property="Opacity" Value="0.88"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bg" Property="Opacity" Value="0.74"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="GhostButton" TargetType="Button" BasedOn="{StaticResource PrimaryButton}">
+            <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bg" CornerRadius="9" Background="#0CFFFFFF"
+                                BorderBrush="#16FFFFFF" BorderThickness="1">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="#14FFFFFF"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="ScrollBar">
+            <Setter Property="Width" Value="6"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollBar">
+                        <Grid Background="Transparent">
+                            <Track x:Name="PART_Track" IsDirectionReversed="True">
+                                <Track.Thumb>
+                                    <Thumb>
+                                        <Thumb.Template>
+                                            <ControlTemplate TargetType="Thumb">
+                                                <Border Background="#28FFFFFF" CornerRadius="3" Margin="1,2"/>
+                                            </ControlTemplate>
+                                        </Thumb.Template>
+                                    </Thumb>
+                                </Track.Thumb>
+                                <Track.DecreaseRepeatButton>
+                                    <RepeatButton Command="{x:Static ScrollBar.PageUpCommand}" Opacity="0"/>
+                                </Track.DecreaseRepeatButton>
+                                <Track.IncreaseRepeatButton>
+                                    <RepeatButton Command="{x:Static ScrollBar.PageDownCommand}" Opacity="0"/>
+                                </Track.IncreaseRepeatButton>
+                            </Track>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
     </Window.Resources>
 
-    <Border Margin="20">
-        <ScrollViewer VerticalScrollBarVisibility="Auto">
-            <StackPanel>
-                <!-- Title -->
-                <TextBlock Text="⚙️ MusicEdge 设置"
-                           FontSize="20" FontWeight="Bold"
-                           Foreground="#EAEAEA"
-                           Margin="0,0,0,16"/>
+    <Border CornerRadius="16" BorderBrush="#1CFFFFFF" BorderThickness="1"
+            Background="#FF0D0D0F">
+        <Grid>
+            <Rectangle Fill="{StaticResource GrainBrush}" IsHitTestVisible="False"/>
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="62"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="66"/>
+                </Grid.RowDefinitions>
 
-                <!-- Adsorb position -->
-                <TextBlock Style="{StaticResource SectionTitle}" Text="📍 吸附位置"/>
-                <StackPanel Orientation="Horizontal" Margin="0,4,0,12">
-                    <RadioButton x:Name="RbRight" Content="右侧边缘" GroupName="Edge"
-                                 IsChecked="True" Foreground="#EAEAEA" FontSize="13"
-                                 Margin="0,0,16,0"/>
-                    <RadioButton x:Name="RbLeft" Content="左侧边缘" GroupName="Edge"
-                                 Foreground="#EAEAEA" FontSize="13"/>
-                </StackPanel>
-
-                <!-- Display delays -->
-                <TextBlock Style="{StaticResource SectionTitle}" Text="⏱️ 显示延迟"/>
-                <TextBlock Text="悬停展开延迟（毫秒）"/>
-                <Slider x:Name="SliderHoverDelay"
-                        Minimum="100" Maximum="1000" Value="300"
-                        TickFrequency="50" IsSnapToTickEnabled="True"/>
-                <TextBlock Text="自动隐藏延迟（毫秒）"/>
-                <Slider x:Name="SliderHideDelay"
-                        Minimum="200" Maximum="2000" Value="500"
-                        TickFrequency="100" IsSnapToTickEnabled="True"/>
-                <TextBlock Text="完全隐藏延迟（毫秒）"/>
-                <Slider x:Name="SliderFullHideDelay"
-                        Minimum="300" Maximum="3000" Value="800"
-                        TickFrequency="100" IsSnapToTickEnabled="True"/>
-
-                <!-- Appearance -->
-                <TextBlock Style="{StaticResource SectionTitle}" Text="🎨 外观"/>
-                <CheckBox x:Name="CbEnableAcrylic" Content="启用毛玻璃效果" IsChecked="True"/>
-                <CheckBox x:Name="CbUseAlbumColor" Content="跟随专辑封面变色" IsChecked="False"/>
-                <CheckBox x:Name="CbDarkMode" Content="深色模式" IsChecked="True"/>
-
-                <!-- Behavior -->
-                <TextBlock Style="{StaticResource SectionTitle}" Text="🎮 行为"/>
-                <CheckBox x:Name="CbAutoStart" Content="开机自动启动"/>
-                <CheckBox x:Name="CbFullscreenDisable" Content="全屏时自动禁用"
-                          IsChecked="True"/>
-                <CheckBox x:Name="CbMinimizeToTray" Content="关闭窗口时最小化到托盘"
-                          IsChecked="True"/>
-
-                <!-- Buttons -->
-                <StackPanel Orientation="Horizontal"
-                            HorizontalAlignment="Right"
-                            Margin="0,20,0,0">
-                    <Button x:Name="BtnSave"
-                            Content="💾 保存" Width="100" Height="32"
-                            Background="#E94560" Foreground="White"
-                            BorderThickness="0" Cursor="Hand"
-                            Click="BtnSave_Click"
-                            Margin="0,0,8,0">
-                        <Button.Resources>
-                            <Style TargetType="Border">
-                                <Setter Property="CornerRadius" Value="6"/>
-                            </Style>
-                        </Button.Resources>
+                <!-- Header -->
+                <Grid Grid.Row="0" Margin="22,0,18,0"
+                      Background="Transparent" MouseLeftButtonDown="Header_MouseLeftButtonDown">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Rectangle Width="3" Height="26" Fill="{StaticResource AccentBrush}"
+                                   RadiusX="1.5" RadiusY="1.5"/>
+                        <StackPanel Margin="10,0,0,0">
+                            <TextBlock Style="{StaticResource Kicker}" Text="MUSIC EDGE / SETTINGS"/>
+                            <TextBlock Text="设置" Foreground="{StaticResource TextPrimary}"
+                                       FontSize="15" FontWeight="SemiBold" Margin="0,2,0,0"/>
+                        </StackPanel>
+                    </StackPanel>
+                    <Button Style="{StaticResource IconButton}" HorizontalAlignment="Right"
+                            VerticalAlignment="Center" Click="BtnClose_Click">
+                        <Path Data="M19,6.41L17.59,5 12,10.59 6.41,5 5,6.41 10.59,12 5,17.59 6.41,19 12,13.41 17.59,19 19,17.59 13.41,12z"
+                              Fill="{StaticResource TextSecondary}" Width="11" Height="11" Stretch="Uniform"/>
                     </Button>
-                    <Button x:Name="BtnReset"
-                            Content="🔄 默认" Width="100" Height="32"
-                            Background="#2A2A4A" Foreground="#EAEAEA"
-                            BorderThickness="0" Cursor="Hand"
-                            Click="BtnReset_Click">
-                        <Button.Resources>
-                            <Style TargetType="Border">
-                                <Setter Property="CornerRadius" Value="6"/>
-                            </Style>
-                        </Button.Resources>
-                    </Button>
-                </StackPanel>
-            </StackPanel>
-        </ScrollViewer>
+                </Grid>
+
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled"
+                              Padding="0,0,6,0">
+                    <StackPanel Margin="22,4,16,8">
+
+                        <!-- 01 Edge and timing -->
+                        <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource CardBorder}"
+                                BorderThickness="1" CornerRadius="12" Padding="16,15,16,8" Margin="0,0,0,12">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource Kicker}" Text="01 / EDGE"/>
+                                <TextBlock Style="{StaticResource SectionTitle}" Text="边缘与交互"/>
+
+                                <TextBlock Style="{StaticResource FieldLabel}" Text="面板吸附位置"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,7,0,16">
+                                    <RadioButton x:Name="RbRight" Style="{StaticResource EdgeRadio}"
+                                                 GroupName="Edge" Content="右侧边缘" IsChecked="True"/>
+                                    <RadioButton x:Name="RbLeft" Style="{StaticResource EdgeRadio}"
+                                                 GroupName="Edge" Content="左侧边缘" Margin="8,0,0,0"/>
+                                </StackPanel>
+
+                                <Grid>
+                                    <TextBlock Style="{StaticResource FieldLabel}" Text="悬停后展开延迟"/>
+                                    <TextBlock x:Name="TxtHoverValue" HorizontalAlignment="Right"
+                                               Foreground="{StaticResource TextPrimary}" FontSize="10"
+                                               FontFamily="Cascadia Mono, Consolas"/>
+                                </Grid>
+                                <Slider x:Name="SliderHover" Style="{StaticResource SettingsSlider}"
+                                        Minimum="100" Maximum="1200" TickFrequency="50"
+                                        IsSnapToTickEnabled="True" Margin="0,1,0,11"/>
+
+                                <Grid>
+                                    <TextBlock Style="{StaticResource FieldLabel}" Text="移开后收起预览"/>
+                                    <TextBlock x:Name="TxtCollapseValue" HorizontalAlignment="Right"
+                                               Foreground="{StaticResource TextPrimary}" FontSize="10"
+                                               FontFamily="Cascadia Mono, Consolas"/>
+                                </Grid>
+                                <Slider x:Name="SliderCollapse" Style="{StaticResource SettingsSlider}"
+                                        Minimum="200" Maximum="3000" TickFrequency="50"
+                                        IsSnapToTickEnabled="True" Margin="0,1,0,11"/>
+
+                                <Grid>
+                                    <TextBlock Style="{StaticResource FieldLabel}" Text="完全隐藏延迟"/>
+                                    <TextBlock x:Name="TxtHideValue" HorizontalAlignment="Right"
+                                               Foreground="{StaticResource TextPrimary}" FontSize="10"
+                                               FontFamily="Cascadia Mono, Consolas"/>
+                                </Grid>
+                                <Slider x:Name="SliderHide" Style="{StaticResource SettingsSlider}"
+                                        Minimum="500" Maximum="6000" TickFrequency="100"
+                                        IsSnapToTickEnabled="True" Margin="0,1,0,4"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- 02 PlayerCap -->
+                        <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource CardBorder}"
+                                BorderThickness="1" CornerRadius="12" Padding="16,15,16,15" Margin="0,0,0,12">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource Kicker}" Text="02 / SOURCE"/>
+                                <TextBlock Style="{StaticResource SectionTitle}" Text="播放器接入"/>
+
+                                <CheckBox x:Name="CbPlayerCap" Style="{StaticResource SwitchCheck}"
+                                          Content="连接 PlayerCap 本地桥接"/>
+                                <TextBlock Style="{StaticResource HintText}" Margin="0,-4,0,12"
+                                           Text="PlayerCap 提供逐字歌词、精确进度和封面；未连接时自动回退到 SMTC。"/>
+
+                                <TextBlock Style="{StaticResource FieldLabel}" Text="服务地址" Margin="0,0,0,5"/>
+                                <TextBox x:Name="TxtCapHost" Style="{StaticResource SettingsTextBox}"
+                                         Text="127.0.0.1:8765"/>
+                                <TextBlock Style="{StaticResource FieldLabel}" Text="固定播放器（可选）"
+                                           Margin="0,12,0,5"/>
+                                <TextBox x:Name="TxtCapPlayer" Style="{StaticResource SettingsTextBox}"/>
+                                <TextBlock Style="{StaticResource HintText}" Margin="0,5,0,0"
+                                           Text="留空则跟随 PlayerCap 当前播放器，例如 qqmusic / spotify。"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- 03 Behavior -->
+                        <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource CardBorder}"
+                                BorderThickness="1" CornerRadius="12" Padding="16,15,16,7" Margin="0,0,0,12">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource Kicker}" Text="03 / BEHAVIOR"/>
+                                <TextBlock Style="{StaticResource SectionTitle}" Text="行为"/>
+                                <CheckBox x:Name="CbFullscreen" Style="{StaticResource SwitchCheck}"
+                                          Content="全屏应用、游戏或演示时自动隐藏"/>
+                                <CheckBox x:Name="CbAutoStart" Style="{StaticResource SwitchCheck}"
+                                          Content="开机自动启动 MusicEdgeX"/>
+                                <CheckBox x:Name="CbStartPinned" Style="{StaticResource SwitchCheck}"
+                                          Content="启动后直接显示面板"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- 04 About -->
+                        <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource CardBorder}"
+                                BorderThickness="1" CornerRadius="12" Padding="16,15,16,16">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource Kicker}" Text="04 / ABOUT"/>
+                                <TextBlock Style="{StaticResource SectionTitle}" Text="关于 MusicEdgeX"/>
+                                <TextBlock Style="{StaticResource HintText}"
+                                           Text="版本 2.0.0 · SMTC 零配置，PlayerCap 增强歌词。"/>
+                                <TextBlock Style="{StaticResource HintText}" Margin="0,7,0,0"
+                                           Text="QQ音乐、Spotify、网易云、Apple Music 等接入系统媒体会话的播放器均可使用。"/>
+                                <TextBlock Style="{StaticResource HintText}" Margin="0,7,0,0"
+                                           Text="配置保存在 %APPDATA%\MusicEdgeX\settings.json。"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- Footer -->
+                <Border Grid.Row="2" BorderBrush="#12FFFFFF" BorderThickness="0,1,0,0">
+                    <Grid Margin="22,0,22,0">
+                        <Button x:Name="BtnReset" Style="{StaticResource GhostButton}" Content="恢复默认"
+                                HorizontalAlignment="Left" Width="92" Click="BtnReset_Click"/>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
+                                    VerticalAlignment="Center">
+                            <Button Style="{StaticResource GhostButton}" Content="取消" Width="78"
+                                    Click="BtnCancel_Click" Margin="0,0,8,0"/>
+                            <Button Style="{StaticResource PrimaryButton}" Content="保存" Width="88"
+                                    Click="BtnSave_Click"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Grid>
     </Border>
 </Window>

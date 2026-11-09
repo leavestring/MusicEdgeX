@@ -9,6 +9,15 @@
     <AssemblyName>MusicEdgeX</AssemblyName>
     <RootNamespace>MusicEdge</RootNamespace>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <ApplicationIcon>Assets\MusicEdgeX.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AssemblyTitle>MusicEdgeX</AssemblyTitle>
+    <Product>MusicEdgeX</Product>
+    <Description>Edge-hidden music control panel for Windows</Description>
+    <Authors>leavestring</Authors>
+    <Version>2.0.0</Version>
+    <AssemblyVersion>2.0.0.0</AssemblyVersion>
+    <FileVersion>2.0.0.0</FileVersion>
   </PropertyGroup>
 
 

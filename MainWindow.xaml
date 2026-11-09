@@ -4,106 +4,213 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        Title="MusicEdge"
+        Title="MusicEdgeX"
+        Width="372" Height="512"
         WindowStyle="None"
         AllowsTransparency="True"
         Background="Transparent"
         ResizeMode="NoResize"
         ShowInTaskbar="False"
         Topmost="True"
-        Width="360"
-        Height="510"
-        Opacity="0.96"
-        d:DesignHeight="510" d:DesignWidth="360">
+        Opacity="0"
+        FontFamily="Segoe UI Variable Text, Segoe UI"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True"
+        TextOptions.TextRenderingMode="Grayscale"
+        TextOptions.TextFormattingMode="Display"
+        d:DesignWidth="372" d:DesignHeight="512">
 
     <Window.Resources>
-        <!-- Premium color palette -->
-        <SolidColorBrush x:Key="Surface" Color="#E60A0A1A"/>
-        <SolidColorBrush x:Key="Card" Color="#12122A"/>
-        <SolidColorBrush x:Key="AccentHot" Color="#FFE94560"/>
-        <SolidColorBrush x:Key="TextA" Color="#FFEBEBF0"/>
-        <SolidColorBrush x:Key="TextB" Color="#FF9292AA"/>
-        <SolidColorBrush x:Key="TextC" Color="#FF585870"/>
-        <SolidColorBrush x:Key="GlassBorder" Color="#15FFFFFF"/>
+        <SolidColorBrush x:Key="TextPrimary" Color="#FFF1ECE3"/>
+        <SolidColorBrush x:Key="TextSecondary" Color="#FFA09B92"/>
+        <SolidColorBrush x:Key="TextMuted" Color="#FF6A665F"/>
+        <SolidColorBrush x:Key="PanelBorderBrush" Color="#1CFFFFFF"/>
+        <SolidColorBrush x:Key="SurfaceBrush" Color="#0CFFFFFF"/>
+        <SolidColorBrush x:Key="SurfaceHoverBrush" Color="#16FFFFFF"/>
+        <SolidColorBrush x:Key="AccentBrush" Color="#FFC9604A"/>
 
-        <!-- Rich, deep gradient that stays saturated through layered-window washing -->
-        <LinearGradientBrush x:Key="BrandGradient" StartPoint="0,0" EndPoint="1,1">
-            <GradientStop Color="#FF4B3CCF" Offset="0"/>
-            <GradientStop Color="#FF7C3AED" Offset="0.45"/>
-            <GradientStop Color="#FFE93A6E" Offset="1"/>
-        </LinearGradientBrush>
+        <DrawingBrush x:Key="GrainBrush" TileMode="Tile" Viewport="0,0,5,5"
+                      ViewportUnits="Absolute">
+            <DrawingBrush.Drawing>
+                <DrawingGroup>
+                    <GeometryDrawing Brush="#00000000" Geometry="M0,0 H5 V5 H0 Z"/>
+                    <GeometryDrawing Brush="#07FFFFFF" Geometry="M0,0 H1 V1 H0 Z"/>
+                </DrawingGroup>
+            </DrawingBrush.Drawing>
+        </DrawingBrush>
 
-        <LinearGradientBrush x:Key="SurfaceGradient" StartPoint="0,0" EndPoint="0,1">
-            <GradientStop Color="#E60E0E24" Offset="0"/>
-            <GradientStop Color="#E609091A" Offset="1"/>
-        </LinearGradientBrush>
-
-        <!-- Play triangle: refined proportions -->
-        <PathGeometry x:Key="GeoPlay">M 7.5,5 L 18.5,12 L 7.5,19 Z</PathGeometry>
-        <!-- Pause: two rounded bars via thick stroke -->
-        <PathGeometry x:Key="GeoPause">M 8,6 L 8,18 M 15,6 L 15,18</PathGeometry>
-        <!-- Next: elegant chevron + bar, stroked with round caps -->
-        <PathGeometry x:Key="GeoNext">M 7,5 L 16,12 L 7,19 M 18,5 L 18,19</PathGeometry>
-        <!-- Prev: mirrored chevron + bar -->
-        <PathGeometry x:Key="GeoPrev">M 17,5 L 8,12 L 17,19 M 6,5 L 6,19</PathGeometry>
-        <!-- Heart: flowing, organic curves -->
-        <PathGeometry x:Key="GeoHeart">
-            M 12,20.5 C 5,15 2,10 3,6 C 4,3 7,2 9.5,3.5
-            C 11,4.5 11.5,5.5 12,7 C 12.5,5.5 13,4.5 14.5,3.5
-            C 17,2 20,3 21,6 C 22,10 19,15 12,20.5 Z
-        </PathGeometry>
-        <!-- Shuffle: clean crossed strokes -->
-        <PathGeometry x:Key="GeoShuffle">
-            M 3,7 L 9,7 C 12,7 14,9 14,12
-            M 21,17 L 15,17 C 12,17 10,15 10,12
-            M 3,17 L 7,17 M 21,7 L 17,7
-            M 14,12 L 18,12 M 10,12 L 6,12
-        </PathGeometry>
-
-        <!-- Play/Pause Button Style -->
-        <Style x:Key="PlayBtn" TargetType="Button">
-            <Setter Property="Width" Value="62"/>
-            <Setter Property="Height" Value="62"/>
+        <Style x:Key="IconButton" TargetType="Button">
+            <Setter Property="Width" Value="28"/>
+            <Setter Property="Height" Value="28"/>
+            <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bg" CornerRadius="7" Background="{TemplateBinding Background}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="#12FFFFFF"/>
+                                <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="#1EFFFFFF"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.28"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="TransportButton" TargetType="Button">
+            <Setter Property="Width" Value="38"/>
+            <Setter Property="Height" Value="38"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bg" CornerRadius="19" Background="{TemplateBinding Background}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="#11FFFFFF"/>
+                                <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="#1CFFFFFF"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.26"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="PlayButton" TargetType="Button">
+            <Setter Property="Width" Value="54"/>
+            <Setter Property="Height" Value="54"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid x:Name="ScaleHost" RenderTransformOrigin="0.5,0.5">
+                            <Grid.RenderTransform>
+                                <ScaleTransform ScaleX="1" ScaleY="1"/>
+                            </Grid.RenderTransform>
+                            <Ellipse Fill="#FFF1ECE3"/>
+                            <Ellipse Margin="4" Stroke="#22FFFFFF" StrokeThickness="1"/>
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ScaleHost" Property="RenderTransform">
+                                    <Setter.Value>
+                                        <ScaleTransform ScaleX="1.04" ScaleY="1.04"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="ScaleHost" Property="RenderTransform">
+                                    <Setter.Value>
+                                        <ScaleTransform ScaleX="0.96" ScaleY="0.96"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="RailButton" TargetType="Button">
+            <Setter Property="Width" Value="34"/>
+            <Setter Property="Height" Value="34"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bg" CornerRadius="10" Background="#14FFFFFF">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="#22FFFFFF"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="SeekRepeatBase" TargetType="RepeatButton">
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="IsTabStop" Value="False"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RepeatButton">
+                        <Grid Height="16" Background="Transparent">
+                            <Border Height="2" VerticalAlignment="Center"
+                                    Background="{TemplateBinding Background}"/>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="SeekSlider" TargetType="Slider">
+            <Setter Property="Height" Value="16"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="IsMoveToPointEnabled" Value="True"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Slider">
                         <Grid>
-                            <!-- Soft ambient glow behind the button -->
-                            <Ellipse x:Name="ambient" Width="62" Height="62"
-                                     Fill="{StaticResource BrandGradient}" Opacity="0.18">
-                                <Ellipse.Effect>
-                                    <BlurEffect Radius="18"/>
-                                </Ellipse.Effect>
-                            </Ellipse>
-                            <!-- Main button circle -->
-                            <Ellipse x:Name="bg" Width="54" Height="54"
-                                     Fill="{StaticResource BrandGradient}">
-                                <Ellipse.Effect>
-                                    <DropShadowEffect BlurRadius="20" ShadowDepth="8"
-                                                      Color="#4B3CCF" Opacity="0.55"/>
-                                </Ellipse.Effect>
-                            </Ellipse>
-                            <!-- Subtle top highlight for 3D depth -->
-                            <Ellipse Width="50" Height="26" Margin="0,-18,0,0"
-                                     Fill="White" Opacity="0.08"/>
-                            <!-- Icon -->
-                            <ContentPresenter HorizontalAlignment="Center"
-                                              VerticalAlignment="Center"/>
+                            <Track x:Name="PART_Track" VerticalAlignment="Center">
+                                <Track.DecreaseRepeatButton>
+                                    <RepeatButton Style="{StaticResource SeekRepeatBase}"
+                                                  Background="{DynamicResource AccentBrush}"
+                                                  Command="{x:Static Slider.DecreaseLarge}"/>
+                                </Track.DecreaseRepeatButton>
+                                <Track.Thumb>
+                                    <Thumb x:Name="Thumb" Width="10" Height="10" Opacity="0">
+                                        <Thumb.Template>
+                                            <ControlTemplate TargetType="Thumb">
+                                                <Ellipse Fill="{StaticResource TextPrimary}"
+                                                         Width="10" Height="10"/>
+                                            </ControlTemplate>
+                                        </Thumb.Template>
+                                    </Thumb>
+                                </Track.Thumb>
+                                <Track.IncreaseRepeatButton>
+                                    <RepeatButton Style="{StaticResource SeekRepeatBase}"
+                                                  Background="#2AFFFFFF"
+                                                  Command="{x:Static Slider.IncreaseLarge}"/>
+                                </Track.IncreaseRepeatButton>
+                            </Track>
                         </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="ambient" Property="Opacity" Value="0.3"/>
-                                <Setter TargetName="ambient" Property="Width" Value="68"/>
-                                <Setter TargetName="ambient" Property="Height" Value="68"/>
-                                <Setter TargetName="bg" Property="Width" Value="58"/>
-                                <Setter TargetName="bg" Property="Height" Value="58"/>
+                                <Setter TargetName="Thumb" Property="Opacity" Value="1"/>
                             </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="ambient" Property="Opacity" Value="0.08"/>
-                                <Setter TargetName="bg" Property="Width" Value="48"/>
-                                <Setter TargetName="bg" Property="Height" Value="48"/>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.32"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -111,267 +218,309 @@
             </Setter>
         </Style>
 
-        <!-- Circle Icon Button -->
-        <Style x:Key="CircleBtn" TargetType="Button">
-            <Setter Property="Width" Value="44"/>
-            <Setter Property="Height" Value="44"/>
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="bg" Background="Transparent" CornerRadius="22">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="bg" Property="Background" Value="#12FFFFFF"/>
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="bg" Property="Background" Value="#08FFFFFF"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <!-- Small Icon Button -->
-        <Style x:Key="SmallBtn" TargetType="Button">
-            <Setter Property="Width" Value="30"/>
-            <Setter Property="Height" Value="30"/>
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="bg" Background="Transparent" CornerRadius="15">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="bg" Property="Background" Value="#12FFFFFF"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <!-- Custom Progress Bar -->
-        <Style x:Key="MusicProgress" TargetType="ProgressBar">
-            <Setter Property="Height" Value="3"/>
-            <Setter Property="Minimum" Value="0"/>
-            <Setter Property="Maximum" Value="100"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ProgressBar">
-                        <Grid Height="{TemplateBinding Height}">
-                            <Border Background="#18FFFFFF" CornerRadius="1.5"/>
-                            <Border x:Name="fill" Background="{StaticResource BrandGradient}"
-                                    CornerRadius="1.5" HorizontalAlignment="Left"/>
-                        </Grid>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
+        <Style x:Key="VolumeSlider" TargetType="Slider" BasedOn="{StaticResource SeekSlider}">
+            <Setter Property="Height" Value="14"/>
         </Style>
     </Window.Resources>
 
-    <!-- Main Glass Panel -->
-    <Border CornerRadius="14,0,0,14"
-            Background="{StaticResource SurfaceGradient}"
-            BorderBrush="{StaticResource GlassBorder}"
-            BorderThickness="1,1,0,1">
-        <Border.Effect>
-            <DropShadowEffect BlurRadius="30" ShadowDepth="6" Opacity="0.5" Color="#000000"/>
-        </Border.Effect>
+    <Grid x:Name="RootGrid" ClipToBounds="True">
+        <Border x:Name="PanelBorder" CornerRadius="16,0,0,16"
+                Background="#FF0D0D0F"
+                BorderBrush="{StaticResource PanelBorderBrush}"
+                BorderThickness="1,1,0,1">
+            <Grid>
+                <Rectangle Fill="{StaticResource GrainBrush}" IsHitTestVisible="False"/>
 
-        <Grid Margin="20,0,20,12">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="38"/>    <!-- Header -->
-                <RowDefinition Height="1"/>     <!-- Divider -->
-                <RowDefinition Height="210"/>   <!-- Album Art -->
-                <RowDefinition Height="60"/>    <!-- Track Info -->
-                <RowDefinition Height="32"/>    <!-- Progress -->
-                <RowDefinition Height="60"/>    <!-- Controls -->
-                <RowDefinition Height="44"/>    <!-- Bottom -->
-            </Grid.RowDefinitions>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition x:Name="ColRail" Width="56"/>
+                        <ColumnDefinition x:Name="ColContent" Width="*"/>
+                    </Grid.ColumnDefinitions>
 
-            <!-- Row 0: Header -->
-            <Grid Grid.Row="0" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <!-- Brand dot -->
-                <Ellipse Grid.Column="0" Width="7" Height="7"
-                         Fill="{StaticResource BrandGradient}" VerticalAlignment="Center">
-                    <Ellipse.Effect>
-                        <DropShadowEffect BlurRadius="4" ShadowDepth="0" Color="#7C3AED" Opacity="0.8"/>
-                    </Ellipse.Effect>
-                </Ellipse>
-                <TextBlock Grid.Column="1" Text="MusicEdge"
-                           Foreground="{StaticResource TextB}" FontSize="11"
-                           VerticalAlignment="Center" Margin="8,0,0,0"/>
-                <StackPanel Grid.Column="2" Orientation="Horizontal">
-                    <Button x:Name="BtnPin" Style="{StaticResource SmallBtn}"
-                            Click="BtnPin_Click" ToolTip="固定面板">
-                        <TextBlock Text="📌" FontSize="10"/>
-                    </Button>
-                    <Button Style="{StaticResource SmallBtn}"
-                            Click="BtnClose_Click" ToolTip="隐藏面板">
-                        <Path Width="10" Height="10" Stretch="Uniform"
-                              Stroke="{StaticResource TextB}" StrokeThickness="1.6"
-                              StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-                              Data="M 0,0 L 10,10 M 10,0 L 0,10"/>
-                    </Button>
-                </StackPanel>
-            </Grid>
+                    <!-- Collapsed rail: a vertical line of lyric, a sleeve and a transport key -->
+                    <Border x:Name="Rail" Grid.Column="0" CornerRadius="16,0,0,16"
+                            BorderBrush="#14FFFFFF" BorderThickness="0,0,1,0">
+                        <Grid Margin="8,14,8,14">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
 
-            <!-- Row 1: Divider -->
-            <Border Grid.Row="1" Background="{StaticResource GlassBorder}" Margin="0,5"/>
+                            <Border x:Name="MiniArtFrame" Width="40" Height="40" CornerRadius="10"
+                                    Background="#18181A" BorderBrush="#22FFFFFF" BorderThickness="1"
+                                    RenderOptions.BitmapScalingMode="HighQuality">
+                                <Grid>
+                                    <Path Data="M12,3v10.55c-0.59,-0.34 -1.27,-0.55 -2,-0.55 -2.21,0 -4,1.79 -4,4s1.79,4 4,4 4,-1.79 4,-4V7h4V3h-6z"
+                                          Fill="{StaticResource TextMuted}" Width="15" Height="15"
+                                          Stretch="Uniform" Opacity="0.5"/>
+                                    <Border x:Name="MiniArtLayer" CornerRadius="9" Opacity="0">
+                                        <Border.Background>
+                                            <ImageBrush x:Name="MiniArtBrush" Stretch="UniformToFill"/>
+                                        </Border.Background>
+                                    </Border>
+                                    <Ellipse x:Name="RailPlayingDot" Width="5" Height="5"
+                                             Fill="{DynamicResource AccentBrush}"
+                                             HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                             Margin="0,0,3,3" Opacity="0"/>
+                                </Grid>
+                            </Border>
 
-            <!-- Row 2: Album Art -->
-            <Grid Grid.Row="2" HorizontalAlignment="Center" VerticalAlignment="Center">
-                <!-- Outer glow ring -->
-                <Ellipse Width="184" Height="184"
-                         Stroke="{StaticResource BrandGradient}" StrokeThickness="1.5"
-                         Opacity="0.35" Fill="Transparent"/>
-                <!-- Album cover -->
-                <Border x:Name="AlbumFrame" Width="170" Height="170" CornerRadius="85"
-                        Background="{StaticResource Card}">
-                    <Border.Effect>
-                        <DropShadowEffect BlurRadius="22" ShadowDepth="8" Opacity="0.5" Color="#000000"/>
-                    </Border.Effect>
-                    <Grid>
-                        <TextBlock x:Name="AlbumArtPlaceholder" Text="♫"
-                                   FontSize="50" Foreground="{StaticResource TextC}"
-                                   HorizontalAlignment="Center" VerticalAlignment="Center"
-                                   Opacity="0.35"/>
-                        <Image x:Name="AlbumArtImage" Stretch="UniformToFill"
-                               HorizontalAlignment="Center" VerticalAlignment="Center"
-                               Visibility="Collapsed">
-                            <Image.Clip>
-                                <EllipseGeometry RadiusX="85" RadiusY="85" Center="85,85"/>
-                            </Image.Clip>
-                        </Image>
-                        <!-- Inner highlight ring -->
-                        <Ellipse Width="170" Height="170"
-                                 Stroke="#12FFFFFF" StrokeThickness="1" Fill="Transparent"/>
+                            <StackPanel x:Name="RailLyricPanel" Grid.Row="1"
+                                        HorizontalAlignment="Center" VerticalAlignment="Center"
+                                        Width="42"/>
+
+                            <Button x:Name="BtnRailPlay" Grid.Row="2" Style="{StaticResource RailButton}"
+                                    Click="BtnPlayPause_Click" ToolTip="播放 / 暂停">
+                                <Path x:Name="RailPlayIcon" Width="12" Height="12" Stretch="Uniform"
+                                      Fill="{StaticResource TextPrimary}" Data="M8,5v14l11,-7z"/>
+                            </Button>
+                        </Grid>
+                    </Border>
+
+                    <Grid x:Name="ContentPanel" Grid.Column="1" Margin="20,14,20,14">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="28"/>
+                            <RowDefinition Height="112"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Header -->
+                        <Grid Grid.Row="0">
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="MUSIC EDGE" Foreground="{StaticResource TextSecondary}"
+                                           FontSize="8.5" FontWeight="SemiBold"
+                                           Typography.Capitals="AllSmallCaps"/>
+                                <TextBlock x:Name="TxtSource" Text="未连接"
+                                           Foreground="{StaticResource TextMuted}"
+                                           FontSize="9.5" Margin="0,2,0,0"/>
+                            </StackPanel>
+
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
+                                        VerticalAlignment="Center">
+                                <Button x:Name="BtnPin" Style="{StaticResource IconButton}"
+                                        Click="BtnPin_Click" ToolTip="固定面板">
+                                    <Path Width="13" Height="13" Stretch="Uniform"
+                                          Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                          Data="M16,9V4l1,0c0.55,0 1,-0.45 1,-1v0c0,-0.55 -0.45,-1 -1,-1H7C6.45,2 6,2.45 6,3v0c0,0.55 0.45,1 1,1l1,0v5c0,1.66 -1.34,3 -3,3h0v2h5.97v7l1,1l1,-1v-7H19v-2h0C17.34,12 16,10.66 16,9z"/>
+                                </Button>
+                                <Button Style="{StaticResource IconButton}" Click="BtnClose_Click"
+                                        ToolTip="隐藏面板" Margin="2,0,0,0">
+                                    <Path Width="11" Height="11" Stretch="Uniform"
+                                          Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                          Data="M19,6.41L17.59,5 12,10.59 6.41,5 5,6.41 10.59,12 5,17.59 6.41,19 12,13.41 17.59,19 19,17.59 13.41,12z"/>
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- Sleeve + identity -->
+                        <Grid Grid.Row="1" Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="104"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border x:Name="AlbumFrame" Width="104" Height="104" CornerRadius="14"
+                                    Background="#18181A" BorderBrush="#22FFFFFF" BorderThickness="1"
+                                    RenderOptions.BitmapScalingMode="HighQuality">
+                                <Grid>
+                                    <Path Data="M12,3v10.55c-0.59,-0.34 -1.27,-0.55 -2,-0.55 -2.21,0 -4,1.79 -4,4s1.79,4 4,4 4,-1.79 4,-4V7h4V3h-6z"
+                                          Fill="{StaticResource TextMuted}" Width="34" Height="34"
+                                          Stretch="Uniform" Opacity="0.26"/>
+                                    <Border x:Name="AlbumArtLayer" CornerRadius="13" Opacity="0">
+                                        <Border.Background>
+                                            <ImageBrush x:Name="AlbumArtBrush" Stretch="UniformToFill"/>
+                                        </Border.Background>
+                                    </Border>
+                                    <Border CornerRadius="13" BorderBrush="#16FFFFFF" BorderThickness="1"/>
+                                </Grid>
+                            </Border>
+
+                            <StackPanel Grid.Column="1" Margin="14,1,0,0" VerticalAlignment="Top">
+                                <TextBlock x:Name="TxtSongTitle" Text="未在播放"
+                                           Foreground="{StaticResource TextPrimary}"
+                                           FontSize="17" FontWeight="SemiBold"
+                                           TextWrapping="Wrap" MaxHeight="46"
+                                           TextTrimming="CharacterEllipsis"/>
+                                <TextBlock x:Name="TxtArtist" Text="把鼠标移到屏幕边缘"
+                                           Foreground="{StaticResource TextSecondary}"
+                                           FontSize="11.5" Margin="0,5,0,0"
+                                           TextTrimming="CharacterEllipsis"/>
+                                <TextBlock x:Name="TxtAlbum" Text=""
+                                           Foreground="{StaticResource TextMuted}"
+                                           FontSize="10" Margin="0,3,0,0"
+                                           TextTrimming="CharacterEllipsis"/>
+                                <Border x:Name="SourceDotRow" Margin="0,8,0,0" HorizontalAlignment="Left">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Ellipse x:Name="SourceDot" Width="4" Height="4"
+                                                 Fill="{DynamicResource AccentBrush}"
+                                                 VerticalAlignment="Center"/>
+                                        <TextBlock x:Name="TxtSourceKind" Text="SMTC"
+                                                   Foreground="{StaticResource TextMuted}"
+                                                   FontSize="8.5" Margin="5,0,0,0"
+                                                   Typography.Capitals="AllSmallCaps"/>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </Grid>
+
+                        <Border Grid.Row="2" Height="1" Background="#12FFFFFF" Margin="0,12,0,0"/>
+
+                        <!-- Lyric page -->
+                        <Grid x:Name="LyricBlock" Grid.Row="3" Margin="0,12,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="3"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Rectangle x:Name="LyricMarker" Width="2" Height="20"
+                                       Fill="{DynamicResource AccentBrush}"
+                                       VerticalAlignment="Center" Margin="0,0,0,0"
+                                       RadiusX="1" RadiusY="1" Opacity="0"/>
+                            <StackPanel Grid.Column="1" Margin="12,0,0,0"
+                                        VerticalAlignment="Center">
+                                <TextBlock x:Name="TxtLyricPrev" Text=""
+                                           Foreground="{StaticResource TextMuted}"
+                                           FontFamily="Songti SC, SimSun, Noto Serif CJK SC"
+                                           FontSize="11" TextTrimming="CharacterEllipsis"
+                                           Opacity="0.55" Margin="0,0,0,7"/>
+                                <TextBlock x:Name="TxtLyricCurrent" Text="正在聆听"
+                                           Foreground="{StaticResource TextPrimary}"
+                                           FontFamily="Songti SC, SimSun, Noto Serif CJK SC"
+                                           FontSize="20" LineHeight="30"
+                                           TextWrapping="Wrap">
+                                    <TextBlock.RenderTransform>
+                                        <TranslateTransform Y="0"/>
+                                    </TextBlock.RenderTransform>
+                                </TextBlock>
+                                <TextBlock x:Name="TxtLyricTranslation" Text=""
+                                           Foreground="{StaticResource TextSecondary}"
+                                           FontSize="10.5" TextWrapping="Wrap"
+                                           Margin="0,4,0,0" Opacity="0.8"/>
+                                <TextBlock x:Name="TxtLyricNext" Text=""
+                                           Foreground="{StaticResource TextMuted}"
+                                           FontFamily="Songti SC, SimSun, Noto Serif CJK SC"
+                                           FontSize="11" TextTrimming="CharacterEllipsis"
+                                           Opacity="0.45" Margin="0,7,0,0"/>
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- Position -->
+                        <Grid Grid.Row="4" Margin="0,0,0,0">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="16"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <Slider x:Name="SliderSeek" Style="{StaticResource SeekSlider}"
+                                    Minimum="0" Maximum="1" Value="0"
+                                    ValueChanged="SliderSeek_ValueChanged"
+                                    PreviewMouseLeftButtonDown="SliderSeek_PreviewMouseLeftButtonDown"
+                                    PreviewMouseLeftButtonUp="SliderSeek_PreviewMouseLeftButtonUp"
+                                    LostMouseCapture="SliderSeek_LostMouseCapture"/>
+                            <Grid Grid.Row="1" Margin="0,2,0,0">
+                                <TextBlock x:Name="TxtElapsed" Text="0:00"
+                                           Foreground="{StaticResource TextMuted}" FontSize="9.5"
+                                           FontFamily="Cascadia Mono, Consolas"/>
+                                <TextBlock x:Name="TxtTotal" Text="0:00" HorizontalAlignment="Right"
+                                           Foreground="{StaticResource TextMuted}" FontSize="9.5"
+                                           FontFamily="Cascadia Mono, Consolas"/>
+                            </Grid>
+                        </Grid>
+
+                        <!-- Transport -->
+                        <StackPanel Grid.Row="5" Orientation="Horizontal"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                                    Margin="0,8,0,0">
+                            <Button x:Name="BtnShuffle" Style="{StaticResource TransportButton}"
+                                    Width="34" Height="34" Click="BtnShuffle_Click"
+                                    ToolTip="随机播放" Margin="0,0,2,0">
+                                <Path x:Name="ShuffleIcon" Width="15" Height="15" Stretch="Uniform"
+                                      Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                      Data="M10.59,9.17L5.41,4 4,5.41l5.17,5.17 1.42,-1.41zM14.5,4l2.04,2.04L4,18.59 5.41,20 17.96,7.46 20,9.5V4h-5.5zM14.83,13.41l-1.41,1.41 3.13,3.13L14.5,20H20v-5.5l-2.04,2.04 -3.13,-3.13z"/>
+                            </Button>
+                            <Button Style="{StaticResource TransportButton}" Width="40" Height="40"
+                                    Click="BtnPrevious_Click" ToolTip="上一首" Margin="2,0,0,0">
+                                <Path Width="17" Height="17" Stretch="Uniform"
+                                      Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                      Data="M6,6h2v12H6zm3.5,6l8.5,6V6z"/>
+                            </Button>
+                            <Button x:Name="BtnPlayPause" Style="{StaticResource PlayButton}"
+                                    Click="BtnPlayPause_Click" ToolTip="播放 / 暂停" Margin="8,0">
+                                <Path x:Name="PlayIcon" Width="18" Height="18" Stretch="Uniform"
+                                      Fill="#0C0C0E" Data="M8,5v14l11,-7z"/>
+                            </Button>
+                            <Button Style="{StaticResource TransportButton}" Width="40" Height="40"
+                                    Click="BtnNext_Click" ToolTip="下一首" Margin="0,0,2,0">
+                                <Path Width="17" Height="17" Stretch="Uniform"
+                                      Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                      Data="M6,18l8.5,-6L6,6v12zM16,6v12h2V6h-2z"/>
+                            </Button>
+                            <Button x:Name="BtnLike" Style="{StaticResource TransportButton}"
+                                    Width="34" Height="34" Click="BtnLike_Click"
+                                    ToolTip="收藏到 QQ 音乐">
+                                <Path x:Name="LikeIcon" Width="15" Height="15" Stretch="Uniform"
+                                      Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                      Data="M12,21.35l-1.45,-1.32C5.4,15.36 2,12.28 2,8.5 2,5.42 4.42,3 7.5,3c1.74,0 3.41,0.81 4.5,2.09C13.09,3.81 14.76,3 16.5,3 19.58,3 22,5.42 22,8.5c0,3.78 -3.4,6.86 -8.55,11.54L12,21.35z"/>
+                            </Button>
+                        </StackPanel>
+
+                        <!-- Footer -->
+                        <Grid Grid.Row="6" Margin="0,6,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <Button x:Name="BtnMute" Style="{StaticResource IconButton}"
+                                    Width="24" Height="24" Click="BtnMute_Click" ToolTip="静音">
+                                <Path x:Name="VolumeIcon" Width="14" Height="14" Stretch="Uniform"
+                                      Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                      Data="M3,9v6h4l5,5V4L7,9H3z M16.5,12c0,-1.77 -1.02,-3.29 -2.5,-4.03v8.05c1.48,-0.73 2.5,-2.25 2.5,-4.02zM14,3.23v2.06c2.89,0.86 5,3.54 5,6.71s-2.11,5.85 -5,6.71v2.06c4.01,-0.91 7,-4.49 7,-8.77s-2.99,-7.86 -7,-8.77z"/>
+                            </Button>
+                            <Slider x:Name="SliderVolume" Grid.Column="1" Style="{StaticResource VolumeSlider}"
+                                    Minimum="0" Maximum="100" Value="50" Margin="7,0,7,0"
+                                    ValueChanged="SliderVolume_ValueChanged"
+                                    PreviewMouseWheel="SliderVolume_PreviewMouseWheel"/>
+                            <TextBlock x:Name="TxtVolume" Grid.Column="2" Text="50%"
+                                       Foreground="{StaticResource TextMuted}" FontSize="9"
+                                       Width="28" TextAlignment="Right"
+                                       FontFamily="Cascadia Mono, Consolas"
+                                       VerticalAlignment="Center"/>
+                            <Button x:Name="BtnOpenPlayer" Grid.Column="3" Style="{StaticResource IconButton}"
+                                    Width="24" Height="24" Click="BtnPlaylist_Click"
+                                    ToolTip="打开播放器" Margin="4,0,0,0">
+                                <Path Width="13" Height="13" Stretch="Uniform"
+                                      Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                      Data="M12,1c-4.97,0 -9,4.03 -9,9v7c0,1.66 1.34,3 3,3h3v-8H5v-2c0,-3.87 3.13,-7 7,-7s7,3.13 7,7v2h-4v8h3c1.66,0 3,-1.34 3,-3v-7c0,-4.97 -4.03,-9 -9,-9z"/>
+                            </Button>
+                            <Button x:Name="BtnSettings" Grid.Column="4" Style="{StaticResource IconButton}"
+                                    Width="24" Height="24" Click="BtnSettings_Click"
+                                    ToolTip="设置" Margin="2,0,0,0">
+                                <Path Width="13" Height="13" Stretch="Uniform"
+                                      Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                      Data="M19.14,12.94c0.04,-0.3 0.06,-0.61 0.06,-0.94c0,-0.32 -0.02,-0.64 -0.06,-0.94l2.03,-1.58c0.18,-0.14 0.23,-0.41 0.12,-0.61l-1.92,-3.32c-0.12,-0.22 -0.37,-0.29 -0.59,-0.22l-2.39,0.96c-0.5,-0.38 -1.03,-0.7 -1.62,-0.94L14.4,2.81c-0.04,-0.24 -0.24,-0.41 -0.48,-0.41h-3.84c-0.24,0 -0.43,0.17 -0.47,0.41L9.25,5.35C8.66,5.59 8.12,5.92 7.63,6.29L5.24,5.33c-0.22,-0.08 -0.47,0 -0.59,0.22L2.74,8.87C2.62,9.08 2.66,9.34 2.86,9.48l2.03,1.58C4.84,11.36 4.8,11.69 4.8,12s0.02,0.64 0.06,0.94l-2.03,1.58c-0.18,0.14 -0.23,0.41 -0.12,0.61l1.92,3.32c0.12,0.22 0.37,0.29 0.59,0.22l2.39,-0.96c0.5,0.38 1.03,0.7 1.62,0.94l0.36,2.54c0.05,0.24 0.24,0.41 0.48,0.41h3.84c0.24,0 0.44,-0.17 0.47,-0.41l0.36,-2.54c0.59,-0.24 1.13,-0.56 1.62,-0.94l2.39,0.96c0.22,0.08 0.47,0 0.59,-0.22l1.92,-3.32c0.12,-0.22 0.07,-0.47 -0.12,-0.61L19.14,12.94zM12,15.6c-1.98,0 -3.6,-1.62 -3.6,-3.6s1.62,-3.6 3.6,-3.6s3.6,1.62 3.6,3.6S13.98,15.6 12,15.6z"/>
+                            </Button>
+                        </Grid>
+
                     </Grid>
-                </Border>
+                </Grid>
+
+                <Rectangle x:Name="AccentLine" Width="2" HorizontalAlignment="Left"
+                           Margin="0,26,0,26" Fill="{DynamicResource AccentBrush}"
+                           RadiusX="1" RadiusY="1" Opacity="0.75" IsHitTestVisible="False"/>
             </Grid>
+        </Border>
 
-            <!-- Row 3: Track Info -->
-            <StackPanel Grid.Row="3" VerticalAlignment="Center" Margin="8,4">
-                <TextBlock x:Name="TxtSongTitle" Text="未在播放"
-                           Foreground="{StaticResource TextA}" FontSize="17"
-                           FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
-                           HorizontalAlignment="Center"/>
-                <TextBlock x:Name="TxtArtist" Text="打开 QQ 音乐开始播放"
-                           Foreground="{StaticResource TextB}" FontSize="12.5"
-                           TextTrimming="CharacterEllipsis" HorizontalAlignment="Center"
-                           Margin="0,5,0,0"/>
-            </StackPanel>
-
-            <!-- Row 4: Progress -->
-            <Grid Grid.Row="4" Margin="4,4">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <TextBlock x:Name="TxtCurrentTime" Grid.Column="0" Text="0:00"
-                           Foreground="{StaticResource TextC}" FontSize="10.5"
-                           FontFamily="Consolas" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                <ProgressBar x:Name="ProgressBar" Grid.Column="1"
-                             Style="{StaticResource MusicProgress}" VerticalAlignment="Center"/>
-                <TextBlock x:Name="TxtTotalTime" Grid.Column="2" Text="0:00"
-                           Foreground="{StaticResource TextC}" FontSize="10.5"
-                           FontFamily="Consolas" VerticalAlignment="Center" Margin="10,0,0,0"/>
-            </Grid>
-
-            <!-- Row 5: Main Controls -->
-            <StackPanel Grid.Row="5" Orientation="Horizontal"
-                        HorizontalAlignment="Center" VerticalAlignment="Center">
-                <Button Style="{StaticResource CircleBtn}" Click="BtnShuffle_Click" ToolTip="随机播放">
-                    <Path Width="16" Height="16" Stretch="Uniform"
-                          Stroke="{StaticResource TextB}" StrokeThickness="1.6"
-                          StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-                          StrokeLineJoin="Round" Data="{StaticResource GeoShuffle}"/>
-                </Button>
-                <Button Style="{StaticResource CircleBtn}" Click="BtnPrevious_Click" ToolTip="上一首"
-                        Margin="4,0,6,0">
-                    <Path Width="16" Height="16" Stretch="Uniform"
-                          Stroke="{StaticResource TextB}" StrokeThickness="1.6"
-                          StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-                          StrokeLineJoin="Round" Data="{StaticResource GeoPrev}"/>
-                </Button>
-                <Button x:Name="BtnPlayPause" Style="{StaticResource PlayBtn}"
-                        Click="BtnPlayPause_Click" ToolTip="播放 / 暂停"
-                        Margin="6,0">
-                    <Path x:Name="BtnPlayPauseIcon" Width="22" Height="22" Stretch="Uniform"
-                          Fill="White" Stroke="White" StrokeThickness="3.5"
-                          StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-                          StrokeLineJoin="Round" Data="{StaticResource GeoPlay}"
-                          HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                </Button>
-                <Button Style="{StaticResource CircleBtn}" Click="BtnNext_Click" ToolTip="下一首"
-                        Margin="6,0,4,0">
-                    <Path Width="16" Height="16" Stretch="Uniform"
-                          Stroke="{StaticResource TextB}" StrokeThickness="1.6"
-                          StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-                          StrokeLineJoin="Round" Data="{StaticResource GeoNext}"/>
-                </Button>
-                <Button x:Name="BtnLike" Style="{StaticResource CircleBtn}"
-                        Click="BtnLike_Click" ToolTip="收藏">
-                    <Path x:Name="BtnLikeIcon" Width="15" Height="15" Stretch="Uniform"
-                          Stroke="{StaticResource TextB}" StrokeThickness="1.6"
-                          StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-                          StrokeLineJoin="Round"
-                          Fill="Transparent" Data="{StaticResource GeoHeart}"/>
-                </Button>
-            </StackPanel>
-
-            <!-- Row 6: Bottom Bar -->
-            <StackPanel Grid.Row="6" Orientation="Horizontal"
-                        HorizontalAlignment="Center" VerticalAlignment="Center">
-                <Path Width="13" Height="13" Stretch="Uniform"
-                      Stroke="{StaticResource TextC}" StrokeThickness="1.5"
-                      StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-                      StrokeLineJoin="Round"
-                      Data="M 2,6 L 6,3 L 10,6 M 6,3 L 6,13"/>
-                <Slider x:Name="VolumeSlider" Width="68" Height="20"
-                        Minimum="0" Maximum="100" Value="50"
-                        ValueChanged="VolumeSlider_ValueChanged"
-                        Margin="8,0,14,0"/>
-                <Path Width="13" Height="13" Stretch="Uniform"
-                      Stroke="{StaticResource TextC}" StrokeThickness="1.5"
-                      StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-                      StrokeLineJoin="Round"
-                      Data="M 2,6 L 6,3 L 10,6 M 6,3 L 6,13
-                            M 12,9 C 13,7 13,6 12,5
-                            M 14,11 C 16,8 16,5 14,3"/>
-                <Button Style="{StaticResource SmallBtn}" Click="BtnPlaylist_Click"
-                        ToolTip="打开 QQ 音乐" Margin="10,0,0,0">
-                    <Path Width="12" Height="12" Stretch="Uniform"
-                          Stroke="{StaticResource TextB}" StrokeThickness="1.5"
-                          StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-                          StrokeLineJoin="Round"
-                          Data="M 4,3 L 9,6 L 4,9 Z M 3,14 L 9,7 L 15,14"/>
-                </Button>
-                <Button Style="{StaticResource SmallBtn}" Click="BtnSettings_Click"
-                        ToolTip="设置" Margin="2,0,0,0">
-                    <Path Width="12" Height="12" Stretch="Uniform"
-                          Stroke="{StaticResource TextB}" StrokeThickness="1.5"
-                          StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-                          Data="M 12,6.5 A 5.5,5.5 0 1,1 6.5,1 A 5.5,5.5 0 0,1 12,6.5 Z
-                                M 12,7 A 0.6,0.6 0 1,0 12.01,7.01"/>
-                </Button>
-            </StackPanel>
-        </Grid>
-    </Border>
+        <Border x:Name="ToastHost" HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                Margin="0,0,0,64" Padding="12,7" CornerRadius="9"
+                Background="#F018181A" BorderBrush="#18FFFFFF" BorderThickness="1"
+                Opacity="0" IsHitTestVisible="False" Panel.ZIndex="10">
+            <TextBlock x:Name="TxtToast" Text=""
+                       Foreground="{StaticResource TextPrimary}" FontSize="11"/>
+        </Border>
+    </Grid>
 </Window>

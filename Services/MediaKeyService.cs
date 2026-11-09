@@ -3,78 +3,97 @@ using System.Runtime.InteropServices;
 namespace MusicEdge.Services;
 
 /// <summary>
-/// Simulates media key presses (Play/Pause, Next, Previous) using Windows keybd_event API.
-/// This is more reliable than SMTC for controlling QQ Music.
+/// Sends media keys with a single non-blocking SendInput call.
+/// Used as a fallback when the active SMTC session rejects a command.
 /// </summary>
-public class MediaKeyService
+public sealed class MediaKeyService
 {
-    #region Keybd_event Interop
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
-
+    private const uint INPUT_KEYBOARD = 1;
     private const uint KEYEVENTF_EXTENDEDKEY = 0x0001;
     private const uint KEYEVENTF_KEYUP = 0x0002;
 
-    // Virtual Key Codes for media keys
-    private const byte VK_MEDIA_PLAY_PAUSE = 0xB3;
-    private const byte VK_MEDIA_NEXT_TRACK = 0xB0;
-    private const byte VK_MEDIA_PREV_TRACK = 0xB1;
-    private const byte VK_MEDIA_STOP = 0xB2;
-    private const byte VK_VOLUME_UP = 0xAF;
-    private const byte VK_VOLUME_DOWN = 0xAE;
+    private const ushort VK_MEDIA_NEXT_TRACK = 0xB0;
+    private const ushort VK_MEDIA_PREV_TRACK = 0xB1;
+    private const ushort VK_MEDIA_PLAY_PAUSE = 0xB3;
+    private const ushort VK_VOLUME_UP = 0xAF;
+    private const ushort VK_VOLUME_DOWN = 0xAE;
 
-    #endregion
+    public void TogglePlayPause() => SendKey(VK_MEDIA_PLAY_PAUSE, extended: true);
 
-    private const int KeyPressDelayMs = 30; // Delay between key down and key up
+    public void NextTrack() => SendKey(VK_MEDIA_NEXT_TRACK, extended: true);
 
-    /// <summary>
-    /// Toggle Play/Pause.
-    /// </summary>
-    public void TogglePlayPause()
+    public void PreviousTrack() => SendKey(VK_MEDIA_PREV_TRACK, extended: true);
+
+    public void VolumeUp() => SendKey(VK_VOLUME_UP, extended: true);
+
+    public void VolumeDown() => SendKey(VK_VOLUME_DOWN, extended: true);
+
+    private static void SendKey(ushort virtualKey, bool extended)
     {
-        keybd_event(VK_MEDIA_PLAY_PAUSE, 0, KEYEVENTF_EXTENDEDKEY, UIntPtr.Zero);
-        Thread.Sleep(KeyPressDelayMs);
-        keybd_event(VK_MEDIA_PLAY_PAUSE, 0, KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP, UIntPtr.Zero);
+        var flags = extended ? KEYEVENTF_EXTENDEDKEY : 0;
+        var inputs = new[]
+        {
+            CreateKey(virtualKey, flags),
+            CreateKey(virtualKey, flags | KEYEVENTF_KEYUP)
+        };
+
+        SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<INPUT>());
     }
 
-    /// <summary>
-    /// Skip to next track.
-    /// </summary>
-    public void NextTrack()
+    internal static INPUT CreateKey(ushort virtualKey, uint flags) => new()
     {
-        keybd_event(VK_MEDIA_NEXT_TRACK, 0, KEYEVENTF_EXTENDEDKEY, UIntPtr.Zero);
-        Thread.Sleep(KeyPressDelayMs);
-        keybd_event(VK_MEDIA_NEXT_TRACK, 0, KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP, UIntPtr.Zero);
+        Type = INPUT_KEYBOARD,
+        Data = new INPUTUNION
+        {
+            Keyboard = new KEYBDINPUT
+            {
+                VirtualKey = virtualKey,
+                Flags = flags
+            }
+        }
+    };
+
+    internal static void SendInputs(params INPUT[] inputs) =>
+        SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<INPUT>());
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct INPUT
+    {
+        public uint Type;
+        public INPUTUNION Data;
     }
 
-    /// <summary>
-    /// Go to previous track.
-    /// </summary>
-    public void PreviousTrack()
+    [StructLayout(LayoutKind.Explicit)]
+    internal struct INPUTUNION
     {
-        keybd_event(VK_MEDIA_PREV_TRACK, 0, KEYEVENTF_EXTENDEDKEY, UIntPtr.Zero);
-        Thread.Sleep(KeyPressDelayMs);
-        keybd_event(VK_MEDIA_PREV_TRACK, 0, KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP, UIntPtr.Zero);
+        [FieldOffset(0)]
+        public MOUSEINPUT Mouse;
+
+        [FieldOffset(0)]
+        public KEYBDINPUT Keyboard;
     }
 
-    /// <summary>
-    /// Volume up (5% step).
-    /// </summary>
-    public void VolumeUp()
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct MOUSEINPUT
     {
-        keybd_event(VK_VOLUME_UP, 0, KEYEVENTF_EXTENDEDKEY, UIntPtr.Zero);
-        Thread.Sleep(KeyPressDelayMs);
-        keybd_event(VK_VOLUME_UP, 0, KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP, UIntPtr.Zero);
+        public int Dx;
+        public int Dy;
+        public uint MouseData;
+        public uint Flags;
+        public uint Time;
+        public IntPtr ExtraInfo;
     }
 
-    /// <summary>
-    /// Volume down (5% step).
-    /// </summary>
-    public void VolumeDown()
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct KEYBDINPUT
     {
-        keybd_event(VK_VOLUME_DOWN, 0, KEYEVENTF_EXTENDEDKEY, UIntPtr.Zero);
-        Thread.Sleep(KeyPressDelayMs);
-        keybd_event(VK_VOLUME_DOWN, 0, KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP, UIntPtr.Zero);
+        public ushort VirtualKey;
+        public ushort ScanCode;
+        public uint Flags;
+        public uint Time;
+        public IntPtr ExtraInfo;
     }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern uint SendInput(uint inputCount, INPUT[] inputs, int size);
 }

@@ -29,8 +29,29 @@ public class TrackInfo
     /// <summary>Thumbnail image data (album art)</summary>
     public byte[]? ThumbnailBytes { get; set; }
 
-    /// <summary>Whether the track has been "liked"/favorited</summary>
-    public bool IsLiked { get; set; }
+    /// <summary>AppUserModelId of the app that owns the media session</summary>
+    public string SourceAppId { get; set; } = string.Empty;
+
+    /// <summary>Friendly name of the source app (QQ音乐, Spotify, ...)</summary>
+    public string SourceName { get; set; } = "系统媒体";
+
+    /// <summary>Whether the source session exposes shuffle control</summary>
+    public bool IsShuffleActive { get; set; }
+
+    public bool SupportsShuffle { get; set; }
+
+    /// <summary>SMTC or PlayerCap</summary>
+    public string SourceKind { get; set; } = "SMTC";
+
+    /// <summary>Optional lyric source label (PlayerCap player id)</summary>
+    public string LyricSource { get; set; } = string.Empty;
+
+    /// <summary>Timed lyric lines when the source can provide them</summary>
+    public IReadOnlyList<LyricLine> Lyrics { get; set; } = Array.Empty<LyricLine>();
+
+    public bool IsQQMusic =>
+        SourceAppId.Contains("QQMusic", StringComparison.OrdinalIgnoreCase) ||
+        SourceName.Contains("QQ音乐", StringComparison.Ordinal);
 
     public override string ToString() =>
         string.IsNullOrEmpty(Title) ? "No track" : $"{Title} - {Artist}";

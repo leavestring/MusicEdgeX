@@ -40,7 +40,7 @@ internal static class Win32Interop
     public static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
 
     [DllImport("user32.dll")]
-    public static extern bool SetWindowPos(IntPtr hWnd, int hWndInsertAfter,
+    public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter,
         int X, int Y, int cx, int cy, uint uFlags);
 
     [DllImport("user32.dll")]
@@ -57,6 +57,9 @@ internal static class Win32Interop
 
     [DllImport("user32.dll")]
     public static extern IntPtr MonitorFromWindow(IntPtr hWnd, uint dwFlags);
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr MonitorFromPoint(POINT pt, uint dwFlags);
 
     [DllImport("user32.dll")]
     public static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
@@ -87,6 +90,26 @@ internal static class Win32Interop
 
     public const int WH_MOUSE_LL = 14;
     public const int WM_MOUSEMOVE = 0x0200;
+
+    public const uint MONITOR_DEFAULTTOPRIMARY = 1;
+    public const uint MONITOR_DEFAULTTONEAREST = 2;
+
+    [DllImport("kernel32.dll")]
+    public static extern uint GetCurrentThreadId();
+
+    [DllImport("user32.dll")]
+    public static extern int GetMessage(out MSG lpMsg, IntPtr hWnd, uint wMsgFilterMin, uint wMsgFilterMax);
+
+    [DllImport("user32.dll")]
+    public static extern bool TranslateMessage(ref MSG lpMsg);
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr DispatchMessage(ref MSG lpMsg);
+
+    [DllImport("user32.dll")]
+    public static extern bool PostThreadMessage(uint idThread, uint msg, IntPtr wParam, IntPtr lParam);
+
+    public const uint WM_QUIT = 0x0012;
 
     #endregion
 
@@ -182,6 +205,28 @@ internal static class Win32Interop
         public uint cbSize;
         public uint dwTime;
     }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MSG
+    {
+        public IntPtr hwnd;
+        public uint message;
+        public IntPtr wParam;
+        public IntPtr lParam;
+        public uint time;
+        public POINT pt;
+    }
+
+    #endregion
+
+    #region Shell State
+
+    [DllImport("shell32.dll")]
+    public static extern int SHQueryUserNotificationState(out int state);
+
+    public const int QUNS_BUSY = 1;
+    public const int QUNS_RUNNING_D3D_FULL_SCREEN = 2;
+    public const int QUNS_PRESENTATION_MODE = 3;
 
     #endregion
 }
