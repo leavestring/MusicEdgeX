@@ -1,68 +1,45 @@
+using System.Diagnostics;
+using System.IO;
 using System.Net.Http;
 using System.Net.WebSockets;
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using MusicEdge.Models;
 
 namespace MusicEdge.Services;
 
-public enum PlayerCapConnection
-{
-    Idle,
-    Probing,
-    Connecting,
-    Connected,
-    Disconnected,
-    Unreachable
-}
+public enum PlayerCapConnection { Idle, Probing, Connecting, Connected, Disconnected, Unreachable }
 
-/// <summary>
-/// Optional richer source: consumes the PlayerCap local bridge
-/// (GET /service-status + WebSocket /ws). It supplies track metadata, cover art,
-/// precise playback position and timed / word-level lyrics that SMTC cannot expose.
-/// Control commands intentionally stay on the SMTC/media-key path.
-/// </summary>
 public sealed class PlayerCapService : IDisposable
 {
-    private const string DefaultHost = "127.0.0.1:8765";
-    private const int ReconnectDelayMs = 2200;
-    private const int ReconnectProbeDelayMs = 3200;
+    private const int MaxArtworkBytes = 8 * 1024 * 1024;
+    private const int MaxFrameBytes = 16 * 1024 * 1024;
+    private const int InitialRetryMs = 3200;
+    private const int MaxRetryMs = 30000;
+    private const double MaxTrackSeconds = 7 * 24 * 60 * 60;
 
-    public event Action<TrackInfo>? TrackChanged;
-    public event Action<PlaybackState>? PlaybackStateChanged;
-    public event Action<IReadOnlyList<LyricLine>>? LyricsChanged;
-    public event Action<PlayerCapConnection, string>? ConnectionChanged;
+    public event Action? Changed;
 
     private readonly object _gate = new();
-    private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(2.5) };
-    private readonly SemaphoreSlim _coverLock = new(1, 1);
+    private readonly HttpClient _http = new()
+    {
+        Timeout = TimeSpan.FromSeconds(2.5),
+        MaxResponseContentBufferSize = MaxArtworkBytes
+    };
+    private readonly CancellationTokenSource _lifetime = new();
     private readonly string _host;
-    private readonly string _player;
-
-    private CancellationTokenSource? _cts;
+    private readonly string _requestedPlayer;
     private Task? _loop;
-    private bool _running;
-    private bool _disposed;
-
-    private string _activePlayer = string.Empty;
-    private string _statusDetail = string.Empty;
-    private string _title = string.Empty;
-    private string _artist = string.Empty;
-    private string _trackKey = string.Empty;
-    private string _coverKey = string.Empty;
-    private byte[]? _coverBytes;
-    private string _currentLyricText = string.Empty;
-    private string _currentTranslation = string.Empty;
-    private List<LyricLine> _lyrics = new();
-
-    private TimeSpan _duration;
-    private double _positionSec;
-    private DateTime _anchorUtc = DateTime.UtcNow;
-    private bool _playing;
-    private PlaybackState _state = PlaybackState.Closed;
-    private PlayerCapConnection _connection = PlayerCapConnection.Idle;
-    private IReadOnlyList<string> _supportedPlayers = Array.Empty<string>();
+    private TrackInfo _track = new();
+    private TimeSpan _anchorPosition;
+    private long _anchorTimestamp;
+    private long _trackVersion;
+    private long _coverVersion;
+    private CancellationTokenSource? _coverRequest;
+    private string? _coverRequestKey;
+    private bool _hasFullLyrics;
+    private readonly List<(int? Index, LyricLine Line)> _streamedLyrics = [];
+    private PlayerCapConnection _connection;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -70,176 +47,120 @@ public sealed class PlayerCapService : IDisposable
         NumberHandling = JsonNumberHandling.AllowReadingFromString
     };
 
-    public PlayerCapService(string? host = null, string? player = null)
+    public PlayerCapService(string host, string player)
     {
         _host = NormalizeHost(host);
-        _player = player?.Trim() ?? string.Empty;
+        _requestedPlayer = player.Trim();
     }
 
-    public PlayerCapConnection Connection
+    public (PlayerCapConnection Connection, TrackInfo Track) GetSnapshot()
     {
-        get { lock (_gate) return _connection; }
-    }
-
-    public bool IsConnected => Connection == PlayerCapConnection.Connected;
-
-    public string ActivePlayer
-    {
-        get { lock (_gate) return _activePlayer; }
-    }
-
-    public string StatusDetail
-    {
-        get { lock (_gate) return _statusDetail; }
-    }
-
-    public IReadOnlyList<string> SupportedPlayers
-    {
-        get { lock (_gate) return _supportedPlayers; }
-    }
-
-    public bool HasTrack
-    {
-        get { lock (_gate) return !string.IsNullOrWhiteSpace(_title) || !string.IsNullOrWhiteSpace(_artist); }
-    }
-
-    public TrackInfo CurrentTrack
-    {
-        get
-        {
-            lock (_gate)
-            {
-                return BuildSnapshotLocked();
-            }
-        }
+        lock (_gate)
+            return (_connection, _track with { Position = GetPositionLocked() });
     }
 
     public TimeSpan GetPosition()
     {
         lock (_gate)
-        {
-            return TimeSpan.FromSeconds(GetPositionLocked());
-        }
+            return GetPositionLocked();
     }
 
     public void Start()
     {
-        if (_running || _disposed) return;
-        _running = true;
-        _cts = new CancellationTokenSource();
-        _loop = Task.Run(() => RunAsync(_cts.Token));
+        var token = _lifetime.Token;
+        _loop = Task.Run(() => RunAsync(token), token);
     }
 
-    public void Stop()
+    private async Task RunAsync(CancellationToken token)
     {
-        if (!_running) return;
-        _running = false;
-        _cts?.Cancel();
-        _cts?.Dispose();
-        _cts = null;
-        SetConnection(PlayerCapConnection.Idle, string.Empty);
-    }
-
-    private async Task RunAsync(CancellationToken cancellationToken)
-    {
-        while (!cancellationToken.IsCancellationRequested)
+        int retryMs = InitialRetryMs;
+        try
         {
-            SetConnection(PlayerCapConnection.Probing, string.Empty);
-            var service = await ProbeAsync(cancellationToken);
-            if (service == null)
+            while (!token.IsCancellationRequested)
             {
-                SetConnection(PlayerCapConnection.Unreachable, "未发现 PlayerCap 服务");
-                if (!await DelayAsync(ReconnectProbeDelayMs, cancellationToken)) return;
-                continue;
-            }
+                SetConnection(PlayerCapConnection.Probing);
+                var service = await ProbeAsync(token);
+                if (token.IsCancellationRequested) return;
 
-            lock (_gate)
-            {
-                _supportedPlayers = service.PlayerSupport ?? new List<string>();
-            }
+                if (service == null)
+                {
+                    SetConnection(PlayerCapConnection.Unreachable);
+                }
+                else
+                {
+                    using var socket = new ClientWebSocket();
+                    socket.Options.KeepAliveInterval = TimeSpan.FromSeconds(20);
+                    SetConnection(PlayerCapConnection.Connecting);
+                    try
+                    {
+                        var path = string.IsNullOrEmpty(_requestedPlayer) ? "/ws" :
+                            $"/{Uri.EscapeDataString(_requestedPlayer)}/ws";
+                        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
+                        timeout.CancelAfter(TimeSpan.FromSeconds(4));
+                        await socket.ConnectAsync(new Uri($"ws://{_host}{path}"), timeout.Token);
+                        ResetForPlayer(ChooseInitialPlayer(service));
+                        SetConnection(PlayerCapConnection.Connected);
+                        retryMs = InitialRetryMs;
+                        await ReceiveLoopAsync(socket, token);
+                    }
+                    catch (Exception ex) when (!token.IsCancellationRequested)
+                    {
+                        Debug.WriteLine(ex);
+                    }
 
-            using var socket = new ClientWebSocket();
-            socket.Options.KeepAliveInterval = TimeSpan.FromSeconds(20);
-            SetConnection(PlayerCapConnection.Connecting, "正在连接 PlayerCap");
+                    if (token.IsCancellationRequested) return;
+                    SetConnection(PlayerCapConnection.Disconnected);
+                }
 
-            try
-            {
-                var path = string.IsNullOrEmpty(_player) ? "/ws" : $"/{Uri.EscapeDataString(_player)}/ws";
-                await socket.ConnectAsync(new Uri($"ws://{_host}{path}"), cancellationToken);
-                SetConnection(PlayerCapConnection.Connected, "PlayerCap 已连接");
-                await ReceiveLoopAsync(socket, service, cancellationToken);
+                await Task.Delay(retryMs, token);
+                retryMs = Math.Min(MaxRetryMs, retryMs * 2);
             }
-            catch (OperationCanceledException)
-            {
-                return;
-            }
-            catch
-            {
-                SetConnection(PlayerCapConnection.Disconnected, "PlayerCap 连接中断");
-            }
-
-            if (cancellationToken.IsCancellationRequested) return;
-            if (!await DelayAsync(ReconnectDelayMs, cancellationToken)) return;
         }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        catch (ObjectDisposedException) when (token.IsCancellationRequested) { }
     }
 
-    private async Task<ServiceStatus?> ProbeAsync(CancellationToken cancellationToken)
+    private string ChooseInitialPlayer(ServiceStatus service)
+    {
+        if (_requestedPlayer.Length != 0) return _requestedPlayer;
+        var supported = service.PlayerRunning?.Where(player => MusicPlayers.FromBridge(player) != null);
+        return supported?.FirstOrDefault(player => service.PlayerStatus?.GetValueOrDefault(player) == "playing")
+            ?? supported?.FirstOrDefault() ?? string.Empty;
+    }
+
+    private async Task<ServiceStatus?> ProbeAsync(CancellationToken token)
     {
         try
         {
-            var json = await _http.GetStringAsync($"http://{_host}/service-status", cancellationToken);
-            var envelope = JsonSerializer.Deserialize<ServiceEnvelope>(json, JsonOptions);
-            return envelope?.Data;
+            var json = await _http.GetStringAsync($"http://{_host}/service-status", token);
+            return JsonSerializer.Deserialize<ServiceEnvelope>(json, JsonOptions)?.Data;
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (Exception ex) when (!token.IsCancellationRequested)
         {
-            return null;
-        }
-        catch
-        {
+            Debug.WriteLine(ex);
             return null;
         }
     }
 
-    private async Task ReceiveLoopAsync(
-        ClientWebSocket socket,
-        ServiceStatus service,
-        CancellationToken cancellationToken)
+    private async Task ReceiveLoopAsync(ClientWebSocket socket, CancellationToken token)
     {
         var buffer = new byte[16 * 1024];
-        var builder = new StringBuilder();
-
-        if (!string.IsNullOrEmpty(_player))
+        using var frame = new MemoryStream();
+        while (socket.State == WebSocketState.Open && !token.IsCancellationRequested)
         {
-            lock (_gate)
-            {
-                _activePlayer = _player;
-            }
-        }
-        else if (service.PlayerRunning is { Count: > 0 })
-        {
-            lock (_gate)
-            {
-                _activePlayer = service.PlayerRunning[0];
-            }
-        }
+            var packet = await socket.ReceiveAsync(buffer.AsMemory(), token);
+            if (packet.MessageType == WebSocketMessageType.Close) return;
+            if (packet.MessageType != WebSocketMessageType.Text) continue;
+            if (frame.Length + packet.Count > MaxFrameBytes) return;
 
-        while (socket.State == WebSocketState.Open && !cancellationToken.IsCancellationRequested)
-        {
-            var result = await socket.ReceiveAsync(buffer, cancellationToken);
-            if (result.MessageType == WebSocketMessageType.Close)
-                return;
-
-            builder.Append(Encoding.UTF8.GetString(buffer, 0, result.Count));
-            if (!result.EndOfMessage) continue;
-
-            var json = builder.ToString();
-            builder.Clear();
-            HandleMessage(json);
+            frame.Write(buffer, 0, packet.Count);
+            if (!packet.EndOfMessage) continue;
+            HandleMessage(frame.GetBuffer().AsMemory(0, (int)frame.Length), token);
+            frame.SetLength(0);
         }
     }
 
-    private void HandleMessage(string json)
+    private void HandleMessage(ReadOnlyMemory<byte> json, CancellationToken token)
     {
         try
         {
@@ -249,563 +170,413 @@ public sealed class PlayerCapService : IDisposable
 
             string? type = typeElement.GetString();
             string? player = root.TryGetProperty("player", out var playerElement)
-                ? playerElement.GetString()
-                : null;
+                ? playerElement.GetString() : null;
             var data = root.TryGetProperty("data", out var dataElement) ? dataElement : default;
 
-            if (!string.IsNullOrEmpty(player))
+            bool changed;
+            lock (_gate)
             {
-                lock (_gate)
+                if (token.IsCancellationRequested) return;
+
+                if (type == "player_switch")
                 {
-                    _activePlayer = player;
+                    var target = Read<PlayerSwitchData>(data)?.To ?? string.Empty;
+                    if (_requestedPlayer.Length != 0 && !SamePlayer(_requestedPlayer, target)) return;
+                    ResetForPlayer(target);
+                    changed = true;
+                }
+                else
+                {
+                    bool playerChanged = false;
+                    if (!string.IsNullOrWhiteSpace(player) && !SamePlayer(player, _track.SourceAppId))
+                    {
+                        if (_requestedPlayer.Length != 0 && !SamePlayer(player, _requestedPlayer)) return;
+                        if (_track.SourceAppId.Length != 0 && type is not ("song_info_update" or "status_update"))
+                            return;
+                        if (_track.State == PlaybackState.Playing && !_track.IsEmpty &&
+                            type == "status_update")
+                            return;
+                        ResetForPlayer(player);
+                        playerChanged = true;
+                    }
+
+                    changed = type switch
+                    {
+                        "status_update" => HandleStatus(Read<StatusData>(data)),
+                        "song_info_update" => HandleSongInfo(Read<SongInfoData>(data), token),
+                        "all_lyrics" => HandleAllLyrics(Read<AllLyricsData>(data)),
+                        "lyric_update" => HandleLyricUpdate(Read<LyricUpdateData>(data)),
+                        "playback_pause" or "playback_resume" =>
+                            HandlePlayback(Read<PlaybackData>(data), type == "playback_resume"),
+                        "player_clear" => ClearTrack(),
+                        "lyric_idle" => ClearLyrics(),
+                        _ => false
+                    };
+                    changed |= playerChanged;
                 }
             }
 
-            switch (type)
-            {
-                case "status_update":
-                    HandleStatus(Read<StatusData>(data));
-                    break;
-                case "song_info_update":
-                    HandleSongInfo(Read<SongInfoData>(data));
-                    break;
-                case "all_lyrics":
-                    HandleAllLyrics(Read<AllLyricsData>(data));
-                    break;
-                case "lyric_update":
-                    HandleLyricUpdate(Read<LyricUpdateData>(data));
-                    break;
-                case "playback_pause":
-                case "playback_resume":
-                    HandlePlayback(Read<PlaybackData>(data), type == "playback_resume");
-                    break;
-                case "player_switch":
-                    HandlePlayerSwitch(Read<PlayerSwitchData>(data));
-                    break;
-                case "player_clear":
-                    ClearContent();
-                    break;
-                case "lyric_idle":
-                    ClearLyrics();
-                    break;
-            }
+            if (changed) Changed?.Invoke();
         }
-        catch
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException or ArgumentException)
         {
-            // Malformed or unknown frames must not kill the receive loop.
+            Debug.WriteLine(ex);
         }
     }
 
-    private void HandleStatus(StatusData? data)
+    private bool HandleStatus(StatusData? data)
     {
-        if (data == null) return;
-
-        PlaybackState state;
-        lock (_gate)
+        if (data?.Status == null) return false;
+        var state = data.Status.ToLowerInvariant() switch
         {
-            var now = DateTime.UtcNow;
-            _positionSec = GetPositionLocked(now);
-            _anchorUtc = now;
-            _statusDetail = data.Detail ?? string.Empty;
-            state = MapState(data.Status);
-            _state = state;
-            _playing = state == PlaybackState.Playing;
-        }
-
-        PlaybackStateChanged?.Invoke(state);
-        TrackChanged?.Invoke(CurrentTrack);
+            "playing" => PlaybackState.Playing,
+            "paused" => PlaybackState.Paused,
+            "offline" or "error" => PlaybackState.Closed,
+            _ => PlaybackState.Stopped
+        };
+        if (state is PlaybackState.Closed or PlaybackState.Stopped)
+            return ClearTrack();
+        return UpdateClock(data.Position, state);
     }
 
-    private void HandleSongInfo(SongInfoData? data)
+    private bool HandleSongInfo(SongInfoData? data, CancellationToken token)
     {
-        if (data == null) return;
+        if (data == null) return false;
+        string title = string.IsNullOrWhiteSpace(data.Name) ? data.Title?.Trim() ?? "" : data.Name.Trim();
+        string artist = data.Singer?.Trim() ?? "";
+        if (title.Length == 0) return false;
 
-        string title = data.Name ?? data.Title ?? string.Empty;
-        string artist = data.Singer ?? string.Empty;
-        string key = $"{_activePlayer}\u001f{title}\u001f{artist}";
-
-        bool changed;
-        lock (_gate)
-        {
-            changed = !string.Equals(key, _trackKey, StringComparison.Ordinal);
-            if (changed)
-            {
-                _trackKey = key;
-                _title = title;
-                _artist = artist;
-                _lyrics = new List<LyricLine>();
-                _currentLyricText = string.Empty;
-                _currentTranslation = string.Empty;
-                _coverBytes = null;
-            }
-        }
-
-        if (!changed) return;
-
-        TrackChanged?.Invoke(CurrentTrack);
-        LyricsChanged?.Invoke(Array.Empty<LyricLine>());
-
-        var coverBase64 = data.CoverBase64 ?? string.Empty;
-        var coverUrl = data.Cover ?? string.Empty;
-        if (!string.IsNullOrWhiteSpace(coverBase64) || !string.IsNullOrWhiteSpace(coverUrl))
-            _ = LoadCoverAsync(coverBase64, coverUrl, key);
-    }
-
-    private void HandleAllLyrics(AllLyricsData? data)
-    {
-        if (data == null) return;
-
-        var lyrics = MapLyrics(data);
-        lock (_gate)
-        {
-            _duration = TimeSpan.FromSeconds(Math.Max(0, data.Duration));
-            if (double.IsFinite(data.Position) && data.Position >= 0)
-            {
-                _positionSec = data.Position;
-                _anchorUtc = DateTime.UtcNow;
-            }
-            _lyrics = lyrics;
-            if (lyrics.Count > 0)
-            {
-                _currentLyricText = lyrics[0].Text;
-                _currentTranslation = lyrics[0].Translation;
-            }
-        }
-
-        LyricsChanged?.Invoke(lyrics);
-        TrackChanged?.Invoke(CurrentTrack);
-    }
-
-    private void HandleLyricUpdate(LyricUpdateData? data)
-    {
-        if (data == null) return;
-
-        bool changed;
-        lock (_gate)
-        {
-            if (double.IsFinite(data.Position) && data.Position >= 0)
-            {
-                _positionSec = data.Position;
-                _anchorUtc = DateTime.UtcNow;
-            }
-
-            var text = data.Text ?? string.Empty;
-            var translation = data.SubText ?? string.Empty;
-            changed = !string.Equals(text, _currentLyricText, StringComparison.Ordinal) ||
-                      !string.Equals(translation, _currentTranslation, StringComparison.Ordinal);
-            _currentLyricText = text;
-            _currentTranslation = translation;
-
-            if (_lyrics.Count == 0 && !string.IsNullOrWhiteSpace(text))
-            {
-                var start = TimeSpan.FromSeconds(Math.Max(0, data.PlayTime > 0 ? data.PlayTime : data.Position));
-                var end = _duration > start ? _duration : start + TimeSpan.FromSeconds(6);
-                _lyrics = new List<LyricLine>
-                {
-                    new()
-                    {
-                        Start = start,
-                        End = end,
-                        Text = text,
-                        Translation = translation
-                    }
-                };
-                changed = true;
-            }
-        }
-
+        bool changed = _track.Title != title || _track.Artist != artist;
         if (changed)
-            LyricsChanged?.Invoke(_lyrics.ToArray());
+        {
+            var state = _track.State;
+            ClearTrack();
+            _track = _track with { Title = title, Artist = artist, State = state };
+            _anchorTimestamp = Stopwatch.GetTimestamp();
+        }
+
+        string? coverKey = string.IsNullOrWhiteSpace(data.CoverBase64) ? data.Cover : data.CoverBase64;
+        if (!string.IsNullOrWhiteSpace(coverKey) && _coverRequestKey != coverKey)
+        {
+            _coverRequestKey = coverKey;
+            _coverRequest?.Cancel();
+            var request = CancellationTokenSource.CreateLinkedTokenSource(token);
+            _coverRequest = request;
+            long trackVersion = _trackVersion;
+            long coverVersion = ++_coverVersion;
+            _ = Task.Run(() => LoadCoverAsync(data, request, trackVersion, coverVersion));
+        }
+
+        return changed;
     }
 
-    private void HandlePlayback(PlaybackData? data, bool playing)
+    private bool HandleAllLyrics(AllLyricsData? data)
+    {
+        if (_track.IsEmpty || data == null ||
+            (!string.IsNullOrWhiteSpace(data.Title) && !MusicPlayers.SameText(data.Title, _track.Title)))
+            return false;
+
+        var ordered = (data.Lyrics ?? [])
+            .Where(line => line.Index is not < 0 && !string.IsNullOrWhiteSpace(line.Text) &&
+                           ValidSeconds(line.PlayTime > 0 ? line.PlayTime : line.Timestamp))
+            .OrderBy(line => line.PlayTime > 0 ? line.PlayTime : line.Timestamp)
+            .ToArray();
+        var duration = ValidSeconds(data.Duration) ? TimeSpan.FromSeconds(data.Duration) : _track.Duration;
+        var lyrics = new LyricLine[ordered.Length];
+        for (int index = 0; index < ordered.Length; index++)
+        {
+            var line = ordered[index];
+            var start = TimeSpan.FromSeconds(line.PlayTime > 0 ? line.PlayTime : line.Timestamp);
+            var end = index + 1 < ordered.Length
+                ? TimeSpan.FromSeconds(ordered[index + 1].PlayTime > 0
+                    ? ordered[index + 1].PlayTime : ordered[index + 1].Timestamp)
+                : duration;
+            lyrics[index] = new LyricLine
+            {
+                Start = start,
+                End = end > start ? end : start + TimeSpan.FromSeconds(6),
+                Text = line.Text!.Trim(),
+                Translation = line.SubText?.Trim() ?? ""
+            };
+        }
+
+        bool positionChanged = UpdateClock(data.Position, _track.State);
+        _hasFullLyrics = lyrics.Length != 0;
+        _streamedLyrics.Clear();
+        if (duration == _track.Duration && SameLyrics(lyrics, _track.Lyrics)) return positionChanged;
+        _track = _track with { Duration = duration, Lyrics = lyrics.Length == 0 ? Array.Empty<LyricLine>() : lyrics };
+        return true;
+    }
+
+    private bool HandleLyricUpdate(LyricUpdateData? data)
+    {
+        if (_track.IsEmpty || data == null) return false;
+        bool positionChanged = UpdateClock(data.Position, _track.State);
+        if (_hasFullLyrics) return positionChanged;
+
+        string text = data.Text?.Trim() ?? "";
+        string translation = data.SubText?.Trim() ?? "";
+        if (text.Length == 0) return ClearLyrics() || positionChanged;
+
+        bool hasStart = ValidSeconds(data.PlayTime) || ValidSeconds(data.Timestamp);
+        var start = hasStart
+            ? TimeSpan.FromSeconds(ValidSeconds(data.PlayTime) ? data.PlayTime : data.Timestamp)
+            : GetPositionLocked();
+
+        int existing = data.Index is >= 0
+            ? _streamedLyrics.FindIndex(item => item.Index == data.Index)
+            : hasStart ? _streamedLyrics.FindIndex(item => item.Line.Start == start) : -1;
+        if (existing >= 0)
+        {
+            var previous = _streamedLyrics[existing].Line;
+            if (previous.Text == text && previous.Translation == translation) return positionChanged;
+            start = previous.Start;
+            _streamedLyrics.RemoveAt(existing);
+        }
+        else if (!hasStart && _streamedLyrics.Count > 0 &&
+                 _streamedLyrics[^1].Line.Text == text && _streamedLyrics[^1].Line.Translation == translation)
+        {
+            return positionChanged;
+        }
+
+        var line = new LyricLine
+        {
+            Start = start,
+            End = start + TimeSpan.FromSeconds(6),
+            Text = text,
+            Translation = translation
+        };
+        int insertion = _streamedLyrics.FindIndex(item => item.Line.Start > start);
+        _streamedLyrics.Insert(insertion < 0 ? _streamedLyrics.Count : insertion, (data.Index, line));
+        if (_streamedLyrics.Count > 128) _streamedLyrics.RemoveAt(0);
+        _track = _track with { Lyrics = _streamedLyrics.Select(item => item.Line).ToArray() };
+        return true;
+    }
+
+    private bool HandlePlayback(PlaybackData? data, bool playing) =>
+        UpdateClock(data?.Position ?? double.NaN, playing ? PlaybackState.Playing : PlaybackState.Paused);
+
+    private bool UpdateClock(double seconds, PlaybackState state)
+    {
+        bool changed = state != _track.State;
+        if (!changed && !ValidSeconds(seconds)) return false;
+
+        var previous = GetPositionLocked();
+        _anchorPosition = ValidSeconds(seconds) ? TimeSpan.FromSeconds(seconds) : previous;
+        _anchorTimestamp = Stopwatch.GetTimestamp();
+        if (changed) _track = _track with { State = state };
+        return changed || (state != PlaybackState.Playing && _anchorPosition != previous);
+    }
+
+    private bool ClearLyrics()
+    {
+        _hasFullLyrics = false;
+        _streamedLyrics.Clear();
+        if (_track.Lyrics.Count == 0) return false;
+        _track = _track with { Lyrics = Array.Empty<LyricLine>() };
+        return true;
+    }
+
+    private void ResetForPlayer(string player)
     {
         lock (_gate)
         {
-            if (data != null && double.IsFinite(data.Position) && data.Position >= 0)
-                _positionSec = data.Position;
-            else
-                _positionSec = GetPositionLocked();
-            _anchorUtc = DateTime.UtcNow;
-            _playing = playing;
-            _state = playing ? PlaybackState.Playing : PlaybackState.Paused;
+            ClearTrack();
+            var id = MusicPlayers.FromBridge(player);
+            _track = new TrackInfo
+            {
+                SourceAppId = player,
+                SourceName = MusicPlayers.DisplayName(id),
+                LyricSource = id ?? string.Empty
+            };
         }
-
-        PlaybackStateChanged?.Invoke(playing ? PlaybackState.Playing : PlaybackState.Paused);
     }
 
-    private void HandlePlayerSwitch(PlayerSwitchData? data)
+    private bool ClearTrack()
     {
-        var target = data?.To ?? string.Empty;
-        if (string.IsNullOrEmpty(target))
+        bool changed = !_track.IsEmpty || _track.State != PlaybackState.Closed || _track.Lyrics.Count != 0;
+        ++_trackVersion;
+        _coverRequest?.Cancel();
+        _coverRequest = null;
+        _coverRequestKey = null;
+        _hasFullLyrics = false;
+        _streamedLyrics.Clear();
+        _anchorPosition = TimeSpan.Zero;
+        _anchorTimestamp = 0;
+        _track = new TrackInfo
         {
-            ClearContent();
-            return;
-        }
-
-        lock (_gate)
-        {
-            _activePlayer = target;
-            ClearContentLocked();
-        }
-
-        TrackChanged?.Invoke(CurrentTrack);
-        LyricsChanged?.Invoke(Array.Empty<LyricLine>());
+            SourceAppId = _track.SourceAppId,
+            SourceName = _track.SourceName,
+            LyricSource = _track.LyricSource
+        };
+        return changed;
     }
 
-    private void ClearContent()
+    private async Task LoadCoverAsync(SongInfoData data, CancellationTokenSource request,
+        long trackVersion, long coverVersion)
     {
-        lock (_gate)
-        {
-            ClearContentLocked();
-        }
-        TrackChanged?.Invoke(CurrentTrack);
-        LyricsChanged?.Invoke(Array.Empty<LyricLine>());
-        PlaybackStateChanged?.Invoke(PlaybackState.Closed);
-    }
-
-    private void ClearContentLocked()
-    {
-        _title = string.Empty;
-        _artist = string.Empty;
-        _trackKey = string.Empty;
-        _coverKey = string.Empty;
-        _coverBytes = null;
-        _lyrics = new List<LyricLine>();
-        _currentLyricText = string.Empty;
-        _currentTranslation = string.Empty;
-        _duration = TimeSpan.Zero;
-        _positionSec = 0;
-        _anchorUtc = DateTime.UtcNow;
-        _playing = false;
-        _state = PlaybackState.Closed;
-        _statusDetail = string.Empty;
-    }
-
-    private void ClearLyrics()
-    {
-        lock (_gate)
-        {
-            _lyrics = new List<LyricLine>();
-            _currentLyricText = string.Empty;
-            _currentTranslation = string.Empty;
-        }
-        LyricsChanged?.Invoke(Array.Empty<LyricLine>());
-    }
-
-    private async Task LoadCoverAsync(string base64, string url, string key)
-    {
-        await _coverLock.WaitAsync();
+        byte[]? bytes = null;
+        var token = request.Token;
         try
         {
-            byte[]? bytes = null;
-
-            if (!string.IsNullOrWhiteSpace(base64))
+            if (token.IsCancellationRequested) return;
+            var payload = data.CoverBase64;
+            if (!string.IsNullOrWhiteSpace(payload))
             {
-                var payload = base64;
                 if (payload.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
                 {
                     int comma = payload.IndexOf(',');
                     if (comma >= 0) payload = payload[(comma + 1)..];
                 }
-                try { bytes = Convert.FromBase64String(payload); } catch { }
+
+                if (payload.Length <= MaxArtworkBytes * 4 / 3 + 4)
+                {
+                    try { bytes = Convert.FromBase64String(payload); }
+                    catch (FormatException) { }
+                }
             }
 
-            if (bytes == null && Uri.TryCreate(url, UriKind.Absolute, out var uri) &&
-                (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
-            {
-                try { bytes = await _http.GetByteArrayAsync(uri); } catch { }
-            }
+            if (bytes == null && Uri.TryCreate(data.Cover, UriKind.Absolute, out var uri) &&
+                uri.Scheme is "http" or "https")
+                bytes = await _http.GetByteArrayAsync(uri, token);
 
-            if (bytes == null) return;
-
+            if (bytes is not { Length: > 0 and <= MaxArtworkBytes }) return;
             lock (_gate)
             {
-                if (!string.Equals(key, _trackKey, StringComparison.Ordinal)) return;
-                _coverKey = key;
-                _coverBytes = bytes;
+                if (token.IsCancellationRequested || trackVersion != _trackVersion || coverVersion != _coverVersion)
+                    return;
+                _track = _track with { ThumbnailBytes = bytes };
             }
-
-            TrackChanged?.Invoke(CurrentTrack);
+            Changed?.Invoke();
+        }
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or ObjectDisposedException)
+        {
+            Debug.WriteLine(ex);
         }
         finally
         {
-            _coverLock.Release();
+            lock (_gate)
+            {
+                if (ReferenceEquals(_coverRequest, request))
+                {
+                    _coverRequest = null;
+                    if (bytes == null) _coverRequestKey = null;
+                }
+                request.Dispose();
+            }
         }
     }
 
-    private static List<LyricLine> MapLyrics(AllLyricsData data)
-    {
-        if (data.Count <= 0 || data.Lyrics == null) return new List<LyricLine>();
-
-        var raw = data.Lyrics
-            .Where(line => line.Index >= 0 && !string.IsNullOrWhiteSpace(line.Text))
-            .Select(line => new
-            {
-                Line = line,
-                Start = line.PlayTime > 0 ? line.PlayTime : line.Timestamp
-            })
-            .OrderBy(item => item.Start)
-            .ToList();
-
-        var result = new List<LyricLine>(raw.Count);
-        for (int i = 0; i < raw.Count; i++)
-        {
-            double start = Math.Max(0, raw[i].Start);
-            double next = i + 1 < raw.Count ? Math.Max(start, raw[i + 1].Start) : 0;
-            double end = next > start ? next : (data.Duration > start ? data.Duration : start + 6);
-
-            result.Add(new LyricLine
-            {
-                Start = TimeSpan.FromSeconds(start),
-                End = TimeSpan.FromSeconds(end),
-                Text = raw[i].Line.Text?.Trim() ?? string.Empty,
-                Translation = raw[i].Line.SubText?.Trim() ?? string.Empty
-            });
-        }
-
-        return result;
-    }
-
-    private TrackInfo BuildSnapshotLocked() => new()
-    {
-        Title = _title,
-        Artist = _artist,
-        Album = string.Empty,
-        Duration = _duration,
-        Position = TimeSpan.FromSeconds(GetPositionLocked()),
-        State = _state,
-        ThumbnailBytes = _coverBytes,
-        SourceAppId = _activePlayer,
-        SourceName = DisplayPlayer(_activePlayer),
-        SourceKind = "PlayerCap",
-        LyricSource = _activePlayer,
-        IsShuffleActive = false,
-        SupportsShuffle = false,
-        Lyrics = _lyrics.ToArray()
-    };
-
-    private double GetPositionLocked(DateTime? now = null)
-    {
-        double position = _positionSec;
-        if (_playing)
-            position += ((now ?? DateTime.UtcNow) - _anchorUtc).TotalSeconds;
-
-        if (_duration > TimeSpan.Zero)
-            position = Math.Min(position, _duration.TotalSeconds);
-
-        return Math.Max(0, position);
-    }
-
-    private void SetConnection(PlayerCapConnection connection, string detail)
+    private void SetConnection(PlayerCapConnection connection)
     {
         lock (_gate)
         {
+            if (_connection == connection) return;
             _connection = connection;
-            _statusDetail = detail;
+            if (connection != PlayerCapConnection.Connected && !_track.IsEmpty)
+                ClearTrack();
         }
-        ConnectionChanged?.Invoke(connection, detail);
+        Changed?.Invoke();
     }
 
-    private static async Task<bool> DelayAsync(int milliseconds, CancellationToken cancellationToken)
+    private TimeSpan GetPositionLocked()
     {
-        try
-        {
-            await Task.Delay(milliseconds, cancellationToken);
-            return true;
-        }
-        catch (OperationCanceledException)
-        {
-            return false;
-        }
+        var position = _anchorPosition;
+        if (_track.State == PlaybackState.Playing && _anchorTimestamp != 0)
+            position += Stopwatch.GetElapsedTime(_anchorTimestamp);
+        return _track.Duration > TimeSpan.Zero && position > _track.Duration ? _track.Duration : position;
     }
 
-    private static T? Read<T>(JsonElement element)
+    private static bool SamePlayer(string first, string second) =>
+        string.Equals(first, second, StringComparison.OrdinalIgnoreCase) ||
+        (MusicPlayers.FromBridge(first) is { } id && id == MusicPlayers.FromBridge(second));
+
+    private static bool SameLyrics(IReadOnlyList<LyricLine> first, IReadOnlyList<LyricLine> second)
     {
-        if (element.ValueKind != JsonValueKind.Object) return default;
-        try
+        if (first.Count != second.Count) return false;
+        for (int index = 0; index < first.Count; index++)
         {
-            return element.Deserialize<T>(JsonOptions);
+            var a = first[index];
+            var b = second[index];
+            if (a.Start != b.Start || a.End != b.End || a.Text != b.Text || a.Translation != b.Translation)
+                return false;
         }
-        catch
-        {
-            return default;
-        }
+        return true;
     }
 
-    private static PlaybackState MapState(string? status) => status?.ToLowerInvariant() switch
-    {
-        "playing" => PlaybackState.Playing,
-        "paused" => PlaybackState.Paused,
-        "standby" => PlaybackState.Stopped,
-        "waiting_process" => PlaybackState.Stopped,
-        "offline" => PlaybackState.Closed,
-        "error" => PlaybackState.Closed,
-        _ => PlaybackState.Stopped
-    };
+    private static bool ValidSeconds(double seconds) => seconds >= 0 && seconds <= MaxTrackSeconds;
 
-    public static string DisplayPlayer(string? player)
-    {
-        if (string.IsNullOrWhiteSpace(player)) return "PlayerCap";
-        return player.ToLowerInvariant() switch
-        {
-            "qqmusic" or "qq" => "QQ音乐",
-            "spotify" => "Spotify",
-            "cloudmusic" or "netease" => "网易云音乐",
-            "applemusic" or "apple-music" => "Apple Music",
-            "kugou" => "酷狗音乐",
-            "qishui" => "汽水音乐",
-            "bodian" => "波点音乐",
-            "wesing" => "全民K歌",
-            _ => player
-        };
-    }
+    private static T? Read<T>(JsonElement element) =>
+        element.ValueKind == JsonValueKind.Object ? element.Deserialize<T>(JsonOptions) : default;
 
-    private static string NormalizeHost(string? host)
+    private static string NormalizeHost(string host)
     {
-        var value = string.IsNullOrWhiteSpace(host) ? DefaultHost : host.Trim();
-        value = value.Replace("http://", string.Empty, StringComparison.OrdinalIgnoreCase)
-                     .Replace("https://", string.Empty, StringComparison.OrdinalIgnoreCase)
-                     .Replace("ws://", string.Empty, StringComparison.OrdinalIgnoreCase)
-                     .TrimEnd('/');
-        return value;
+        var value = string.IsNullOrWhiteSpace(host) ? "127.0.0.1:8765" : host.Trim();
+        return value.Replace("http://", "", StringComparison.OrdinalIgnoreCase)
+                    .Replace("https://", "", StringComparison.OrdinalIgnoreCase)
+                    .Replace("ws://", "", StringComparison.OrdinalIgnoreCase).TrimEnd('/');
     }
 
     public void Dispose()
     {
-        if (_disposed) return;
-        _disposed = true;
-        Stop();
+        _lifetime.Cancel();
         _http.Dispose();
-        _coverLock.Dispose();
+        if (_loop == null) _lifetime.Dispose();
+        else _ = _loop.ContinueWith(task =>
+        {
+            if (task.IsFaulted) Debug.WriteLine(task.Exception);
+            _lifetime.Dispose();
+        }, TaskScheduler.Default);
     }
 
     private sealed class ServiceEnvelope
     {
-        [JsonPropertyName("data")]
-        public ServiceStatus? Data { get; set; }
+        [JsonPropertyName("data")] public ServiceStatus? Data { get; init; }
     }
 
     private sealed class ServiceStatus
     {
-        [JsonPropertyName("version")]
-        public string? Version { get; set; }
-
-        [JsonPropertyName("player_support")]
-        public List<string>? PlayerSupport { get; set; }
-
-        [JsonPropertyName("player_running")]
-        public List<string>? PlayerRunning { get; set; }
-
-        [JsonPropertyName("player_status")]
-        public Dictionary<string, string>? PlayerStatus { get; set; }
+        [JsonPropertyName("player_running")] public List<string>? PlayerRunning { get; init; }
+        [JsonPropertyName("player_status")] public Dictionary<string, string>? PlayerStatus { get; init; }
     }
 
-    private sealed class StatusData
+    private sealed class StatusData : PlaybackData
     {
-        [JsonPropertyName("status")]
-        public string? Status { get; set; }
-
-        [JsonPropertyName("detail")]
-        public string? Detail { get; set; }
+        [JsonPropertyName("status")] public string? Status { get; init; }
     }
 
     private sealed class SongInfoData
     {
-        [JsonPropertyName("name")]
-        public string? Name { get; set; }
-
-        [JsonPropertyName("singer")]
-        public string? Singer { get; set; }
-
-        [JsonPropertyName("title")]
-        public string? Title { get; set; }
-
-        [JsonPropertyName("cover")]
-        public string? Cover { get; set; }
-
-        [JsonPropertyName("cover_base64")]
-        public string? CoverBase64 { get; set; }
+        [JsonPropertyName("name")] public string? Name { get; init; }
+        [JsonPropertyName("title")] public string? Title { get; init; }
+        [JsonPropertyName("singer")] public string? Singer { get; init; }
+        [JsonPropertyName("cover")] public string? Cover { get; init; }
+        [JsonPropertyName("cover_base64")] public string? CoverBase64 { get; init; }
     }
 
-    private sealed class AllLyricsData
+    private sealed class AllLyricsData : PlaybackData
     {
-        [JsonPropertyName("title")]
-        public string? Title { get; set; }
-
-        [JsonPropertyName("duration")]
-        public double Duration { get; set; }
-
-        [JsonPropertyName("position")]
-        public double Position { get; set; }
-
-        [JsonPropertyName("progress")]
-        public double Progress { get; set; }
-
-        [JsonPropertyName("count")]
-        public int Count { get; set; }
-
-        [JsonPropertyName("lyrics")]
-        public List<CapLyricLine>? Lyrics { get; set; }
+        [JsonPropertyName("title")] public string? Title { get; init; }
+        [JsonPropertyName("duration")] public double Duration { get; init; } = double.NaN;
+        [JsonPropertyName("lyrics")] public List<LyricUpdateData>? Lyrics { get; init; }
     }
 
-    private sealed class CapLyricLine
+    private sealed class LyricUpdateData : PlaybackData
     {
-        [JsonPropertyName("index")]
-        public int Index { get; set; }
-
-        [JsonPropertyName("timestamp")]
-        public double Timestamp { get; set; }
-
-        [JsonPropertyName("play_time")]
-        public double PlayTime { get; set; }
-
-        [JsonPropertyName("text")]
-        public string? Text { get; set; }
-
-        [JsonPropertyName("sub_text")]
-        public string? SubText { get; set; }
+        [JsonPropertyName("index")] public int? Index { get; init; }
+        [JsonPropertyName("text")] public string? Text { get; init; }
+        [JsonPropertyName("sub_text")] public string? SubText { get; init; }
+        [JsonPropertyName("timestamp")] public double Timestamp { get; init; } = double.NaN;
+        [JsonPropertyName("play_time")] public double PlayTime { get; init; } = double.NaN;
     }
 
-    private sealed class LyricUpdateData
+    private class PlaybackData
     {
-        [JsonPropertyName("index")]
-        public int Index { get; set; }
-
-        [JsonPropertyName("text")]
-        public string? Text { get; set; }
-
-        [JsonPropertyName("sub_text")]
-        public string? SubText { get; set; }
-
-        [JsonPropertyName("timestamp")]
-        public double Timestamp { get; set; }
-
-        [JsonPropertyName("play_time")]
-        public double PlayTime { get; set; }
-
-        [JsonPropertyName("position")]
-        public double Position { get; set; }
-
-        [JsonPropertyName("progress")]
-        public double Progress { get; set; }
-    }
-
-    private sealed class PlaybackData
-    {
-        [JsonPropertyName("position")]
-        public double Position { get; set; }
-
-        [JsonPropertyName("progress")]
-        public double Progress { get; set; }
+        [JsonPropertyName("position")] public double Position { get; init; } = double.NaN;
     }
 
     private sealed class PlayerSwitchData
     {
-        [JsonPropertyName("from")]
-        public string? From { get; set; }
-
-        [JsonPropertyName("to")]
-        public string? To { get; set; }
+        [JsonPropertyName("to")] public string? To { get; init; }
     }
 }

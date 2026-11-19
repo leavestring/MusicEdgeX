@@ -2,6 +2,10 @@ namespace MusicEdge.Models;
 
 public sealed class AppSettings
 {
+    public const int MinLyricOffsetMs = -3000;
+    public const int MaxLyricOffsetMs = 3000;
+    public const int LyricOffsetStepMs = 100;
+
     public string EdgeSide { get; set; } = "Right";
 
     public int HoverDelayMs { get; set; } = 300;
@@ -22,6 +26,8 @@ public sealed class AppSettings
 
     public string PlayerCapPlayer { get; set; } = string.Empty;
 
+    public int LyricOffsetMs { get; set; }
+
     public AppSettings Clone() => new()
     {
         EdgeSide = EdgeSide,
@@ -33,6 +39,7 @@ public sealed class AppSettings
         StartPinned = StartPinned,
         UsePlayerCap = UsePlayerCap,
         PlayerCapHost = PlayerCapHost,
-        PlayerCapPlayer = PlayerCapPlayer
+        PlayerCapPlayer = PlayerCapPlayer,
+        LyricOffsetMs = LyricOffsetMs
     };
 }

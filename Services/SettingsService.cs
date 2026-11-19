@@ -90,5 +90,8 @@ public static class SettingsService
             ? "127.0.0.1:8765"
             : settings.PlayerCapHost.Trim();
         settings.PlayerCapPlayer = settings.PlayerCapPlayer?.Trim() ?? string.Empty;
+        int offset = Math.Clamp(settings.LyricOffsetMs, AppSettings.MinLyricOffsetMs, AppSettings.MaxLyricOffsetMs);
+        settings.LyricOffsetMs = (int)Math.Round(offset / (double)AppSettings.LyricOffsetStepMs,
+            MidpointRounding.AwayFromZero) * AppSettings.LyricOffsetStepMs;
     }
 }

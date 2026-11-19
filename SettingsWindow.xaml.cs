@@ -15,10 +15,15 @@ public partial class SettingsWindow : Window
     {
         _draft = settings.Clone();
         InitializeComponent();
+        MaxHeight = Math.Max(MinHeight, SystemParameters.WorkArea.Height - 24);
 
         SliderHover.ValueChanged += (_, _) => UpdateValueLabels();
         SliderCollapse.ValueChanged += (_, _) => UpdateValueLabels();
         SliderHide.ValueChanged += (_, _) => UpdateValueLabels();
+        SliderLyricOffset.Minimum = AppSettings.MinLyricOffsetMs;
+        SliderLyricOffset.Maximum = AppSettings.MaxLyricOffsetMs;
+        SliderLyricOffset.TickFrequency = AppSettings.LyricOffsetStepMs;
+        SliderLyricOffset.ValueChanged += (_, _) => UpdateValueLabels();
 
         LoadSettings();
     }
@@ -40,6 +45,7 @@ public partial class SettingsWindow : Window
         CbPlayerCap.IsChecked = _draft.UsePlayerCap;
         TxtCapHost.Text = _draft.PlayerCapHost;
         TxtCapPlayer.Text = _draft.PlayerCapPlayer;
+        SliderLyricOffset.Value = _draft.LyricOffsetMs;
 
         _loading = false;
         UpdateValueLabels();
@@ -52,6 +58,7 @@ public partial class SettingsWindow : Window
         TxtHoverValue.Text = $"{SliderHover.Value:0} ms";
         TxtCollapseValue.Text = $"{SliderCollapse.Value:0} ms";
         TxtHideValue.Text = $"{SliderHide.Value:0} ms";
+        TxtLyricOffset.Text = $"{SliderLyricOffset.Value:+0;−0;0} ms";
     }
 
     private void ApplyToDraft()
@@ -68,6 +75,7 @@ public partial class SettingsWindow : Window
             ? "127.0.0.1:8765"
             : TxtCapHost.Text.Trim();
         _draft.PlayerCapPlayer = TxtCapPlayer.Text.Trim();
+        _draft.LyricOffsetMs = (int)SliderLyricOffset.Value;
     }
 
     private void BtnSave_Click(object sender, RoutedEventArgs e)
@@ -75,19 +83,11 @@ public partial class SettingsWindow : Window
         ApplyToDraft();
         ResultSettings = _draft.Clone();
         DialogResult = true;
-        Close();
-    }
-
-    private void BtnCancel_Click(object sender, RoutedEventArgs e)
-    {
-        DialogResult = false;
-        Close();
     }
 
     private void BtnClose_Click(object sender, RoutedEventArgs e)
     {
         DialogResult = false;
-        Close();
     }
 
     private void BtnReset_Click(object sender, RoutedEventArgs e)
@@ -105,6 +105,7 @@ public partial class SettingsWindow : Window
         CbPlayerCap.IsChecked = defaults.UsePlayerCap;
         TxtCapHost.Text = defaults.PlayerCapHost;
         TxtCapPlayer.Text = defaults.PlayerCapPlayer;
+        SliderLyricOffset.Value = defaults.LyricOffsetMs;
         _loading = false;
 
         UpdateValueLabels();

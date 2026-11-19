@@ -96,15 +96,15 @@ public sealed class QQMusicHotkeyService
         }
     }
 
-    public static bool OpenPlayer(string sourceAppId, string sourceName)
+    public static bool OpenPlayer(string sourceName)
     {
-        if (sourceName == "QQ音乐" || sourceAppId.Contains("QQMusic", StringComparison.OrdinalIgnoreCase))
+        if (sourceName == "QQ 音乐")
             return BringQQMusicToFront() || LaunchQQMusic();
 
-        if (sourceName == "Spotify" || sourceAppId.Contains("Spotify", StringComparison.OrdinalIgnoreCase))
+        if (sourceName == "Spotify")
             return TryStart("spotify:");
 
-        if (sourceName == "网易云音乐" || sourceAppId.Contains("CloudMusic", StringComparison.OrdinalIgnoreCase))
+        if (sourceName == "网易云音乐")
         {
             foreach (var path in new[]
                      {

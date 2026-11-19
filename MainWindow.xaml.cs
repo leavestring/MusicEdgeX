@@ -1,6 +1,8 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
+using System.Security.Cryptography;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
@@ -28,8 +30,9 @@ public partial class MainWindow : Window
     private const int ShowGraceMs = 850;
 
     private readonly MusicSourceManager _music;
-    private readonly MediaKeyService _mediaKeys;
     private readonly QQMusicHotkeyService _qqMusic;
+    private readonly object _artworkGate = new();
+    private readonly Dictionary<string, ArtworkResult?> _artworkCache = new();
     private readonly EdgeDetector _edge;
     private readonly SystemVolumeService _volume;
 
@@ -49,37 +52,35 @@ public partial class MainWindow : Window
     private int _animFromX;
     private int _animToX;
     private int _animDuration;
+    private RECT _animWork;
+    private int _lastFrameX;
     private Action? _animOnComplete;
     private bool _animFrameHooked;
 
     private TrackInfo _track = new();
-    private bool _isPlaying;
-    private bool _shuffleActive;
-    private bool _supportsShuffle;
     private bool _isSeeking;
+    private bool _seekPending;
+    private long _seekVersion;
     private bool _isMuted;
     private bool _suppressVolume;
-    private ulong _lastArtHash;
+    private byte[]? _artworkBytes;
     private long _artVersion;
-    private IReadOnlyList<LyricLine> _lyrics = Array.Empty<LyricLine>();
-    private int _activeLyricIndex = -1;
-    private string _lastRailLyric = string.Empty;
-    private string _lastRailLyricText = string.Empty;
-    private bool _lastRailLyricHighlight;
+    private int _activeLyricIndex = int.MinValue;
+    private LyricLine? _activeLyricLine;
+    private string? _lastRailLyric;
+    private bool _lastRailHighlight;
 
     private DispatcherTimer? _toastTimer;
     private DispatcherTimer? _fullscreenTimer;
 
-    private static readonly Color DefaultAccentA = Color.FromRgb(0xC9, 0x60, 0x4A);
-    private static readonly Color DefaultAccentB = Color.FromRgb(0xA8, 0x73, 0x4F);
-    private static readonly Color DefaultAccentC = Color.FromRgb(0x7D, 0x4B, 0x42);
+    private static readonly Color DefaultAccent = Color.FromRgb(0xCD, 0xB1, 0xFF);
+    private static readonly Geometry PlayGeometry = ParseFrozenGeometry("M8,5v14l11,-7z");
+    private static readonly Geometry PauseGeometry = ParseFrozenGeometry("M6,19h4V5H6v14zm8,-14v14h4V5h-4z");
 
-    private const string PlayIconData = "M8,5v14l11,-7z";
-    private const string PauseIconData = "M6,19h4V5H6v14zm8,-14v14h4V5h-4z";
     private const string VolumeIconData =
-        "M3,9v6h4l5,5V4L7,9H3z M16.5,12c0,-1.77 -1.02,-3.29 -2.5,-4.03v8.05c1.48,-0.73 2.5,-2.25 2.5,-4.02zM14,3.23v2.06c2.89,0.86 5,3.54 5,6.71s-2.11,5.85 -5,6.71v2.06c4.01,-0.91 7,-4.49 7,-8.77s-2.99,-7.86 -7,-8.77z";
+        "M4,9 H8 L12,5 V19 L8,15 H4 Z M15.5,9.5 C16.5,10.5 17,11.2 17,12 C17,12.8 16.5,13.5 15.5,14.5 M18,7 C20,8.5 21,10.1 21,12 C21,13.9 20,15.5 18,17";
     private const string VolumeMutedIconData =
-        "M3,9v6h4l5,5V4L7,9H3z M16.5,12l3.5,-3.5 -1.41,-1.41 -3.5,3.5 -3.5,-3.5 -1.41,1.41 3.5,3.5 -3.5,3.5 1.41,1.41 3.5,-3.5 3.5,3.5 1.41,-1.41z";
+        "M4,9 H8 L12,5 V19 L8,15 H4 Z M16,9 L21,15 M21,9 L16,15";
 
     public MainWindow(AppSettings settings, bool showOnStartup = false)
     {
@@ -87,7 +88,6 @@ public partial class MainWindow : Window
         _showOnStartup = showOnStartup;
 
         _music = new MusicSourceManager(settings);
-        _mediaKeys = new MediaKeyService();
         _qqMusic = new QQMusicHotkeyService();
         _edge = new EdgeDetector();
         _volume = new SystemVolumeService();
@@ -95,9 +95,7 @@ public partial class MainWindow : Window
         InitializeComponent();
 
         _music.TrackChanged += OnTrackChanged;
-        _music.PlaybackStateChanged += OnPlaybackStateChanged;
-        _music.PositionChanged += OnPositionChanged;
-        _music.ShuffleChanged += OnShuffleChanged;
+        _music.PositionChanged += UpdatePosition;
         _music.SourceStatusChanged += OnSourceStatusChanged;
 
         _edge.MouseNearEdge += OnMouseNearEdge;
@@ -160,6 +158,7 @@ public partial class MainWindow : Window
     private void OnClosing(object? sender, CancelEventArgs e)
     {
         CancelAnimation();
+        Interlocked.Increment(ref _artVersion);
         _toastTimer?.Stop();
         _fullscreenTimer?.Stop();
         _music.Dispose();
@@ -196,9 +195,9 @@ public partial class MainWindow : Window
         return GetMonitorInfo(monitor, ref info) ? info.rcWork : new RECT { Right = 1920, Bottom = 1080 };
     }
 
-    private int GetTargetX(PanelState state)
+    private int GetTargetX(PanelState state, RECT? workArea = null)
     {
-        var work = GetWorkArea();
+        var work = workArea ?? GetWorkArea();
         int panel = (int)Math.Round(PanelWidth * _dpiX);
         int preview = (int)Math.Round(PreviewWidth * _dpiX);
         bool leftEdge = _settings.EdgeSide == "Left";
@@ -221,21 +220,29 @@ public partial class MainWindow : Window
         };
     }
 
-    private void SetPanelX(int x)
+    private void SetPanelX(int x, RECT work)
     {
         if (_hwnd == IntPtr.Zero) return;
-
-        var work = GetWorkArea();
         int panelHeight = (int)Math.Round(PanelHeight * _dpiY);
         int top = work.Top + Math.Max(0, (work.Height - panelHeight) / 2);
 
         SetWindowPos(_hwnd, IntPtr.Zero, x, top, 0, 0,
             SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+        UpdateEdgeLinePosition(x, work);
+    }
+
+    private void UpdateEdgeLinePosition(int windowX, RECT work)
+    {
+        bool left = _settings.EdgeSide == "Left";
+        double local = (left ? work.Left - windowX : work.Right - windowX) / _dpiX;
+        EdgeProgressShift.X = left ? local : local - EdgeProgressHost.Width;
     }
 
     private void SnapToState(PanelState state)
     {
-        SetPanelX(GetTargetX(state));
+        var work = GetWorkArea();
+        Height = Math.Min(PanelHeight, work.Height / _dpiY);
+        SetPanelX(GetTargetX(state, work), work);
         _state = state;
     }
 
@@ -255,9 +262,20 @@ public partial class MainWindow : Window
 
         PanelBorder.CornerRadius = radius;
         Rail.CornerRadius = radius;
+        ToastHost.Margin = left ? new Thickness(0, 0, 56, 65) : new Thickness(56, 0, 0, 65);
         PanelBorder.BorderThickness = left
             ? new Thickness(0, 1, 1, 1)
             : new Thickness(1, 1, 0, 1);
+        Rail.BorderThickness = left
+            ? new Thickness(1, 0, 0, 0)
+            : new Thickness(0, 0, 1, 0);
+
+        UpdateEdgeLinePosition(GetWindowX(), GetWorkArea());
+        if (_lastRailLyric is { } text)
+        {
+            _lastRailLyric = null;
+            UpdateRailLyric(text, _lastRailHighlight);
+        }
     }
 
     private void ApplySettings()
@@ -271,10 +289,12 @@ public partial class MainWindow : Window
         _music.UpdateSettings(_settings);
         ApplyEdgeSideLayout();
 
-        if (_state == PanelState.Hidden)
-            SnapToState(PanelState.Hidden);
-        else
-            SnapToState(_state);
+        SnapToState(_state);
+        UpdateBridgeStatus();
+        _activeLyricIndex = int.MinValue;
+        if (_state != PanelState.Hidden)
+            UpdatePosition(_music.CurrentPosition);
+        StopLyricTransition();
 
         if (_settings.DisableInFullscreen && _state != PanelState.Hidden)
             StartFullscreenWatch();
@@ -290,10 +310,20 @@ public partial class MainWindow : Window
     {
         CancelAnimation();
 
+        _animWork = GetWorkArea();
+        Height = Math.Min(PanelHeight, _animWork.Height / _dpiY);
+        _animFromX = GetWindowX();
+        _lastFrameX = _animFromX;
+        _animToX = GetTargetX(target, _animWork);
+        if (!SystemParameters.ClientAreaAnimation || _animFromX == _animToX)
+        {
+            SetPanelX(_animToX, _animWork);
+            onComplete?.Invoke();
+            return;
+        }
+
         _animFrameHooked = true;
         _animating = true;
-        _animFromX = GetWindowX();
-        _animToX = GetTargetX(target);
         _animDuration = Math.Max(1, durationMs);
         _animOnComplete = onComplete;
         _animClock.Restart();
@@ -312,7 +342,11 @@ public partial class MainWindow : Window
         double t = 1 - progress;
         double eased = 1 - t * t * t;
         int x = (int)Math.Round(_animFromX + (_animToX - _animFromX) * eased);
-        SetPanelX(x);
+        if (x != _lastFrameX)
+        {
+            _lastFrameX = x;
+            SetPanelX(x, _animWork);
+        }
 
         if (progress < 1) return;
 
@@ -326,7 +360,7 @@ public partial class MainWindow : Window
         CompositionTarget.Rendering -= OnAnimationFrame;
         _animFrameHooked = false;
         _animating = false;
-        SetPanelX(_animToX);
+        if (_lastFrameX != _animToX) SetPanelX(_animToX, _animWork);
 
         var callback = _animOnComplete;
         _animOnComplete = null;
@@ -392,6 +426,7 @@ public partial class MainWindow : Window
         if (_state != PanelState.Expanded || _animating) return;
 
         _state = PanelState.Preview;
+        StopLyricTransition();
         AnimateTo(PanelState.Preview, CollapseDurationMs, () =>
         {
             if (_state == PanelState.Preview)
@@ -407,11 +442,12 @@ public partial class MainWindow : Window
         if (_state == PanelState.Hidden && !_animating) return;
 
         _state = PanelState.Hidden;
+        _music.IsPanelVisible = false;
+        StopLyricTransition();
         AnimateTo(PanelState.Hidden, HideDurationMs, () =>
         {
             if (_state != PanelState.Hidden) return;
             Opacity = 0;
-            _music.IsPanelVisible = false;
             _edge.NotifyPanelHidden();
             StopFullscreenWatch();
         });
@@ -503,373 +539,333 @@ public partial class MainWindow : Window
 
     #region SMTC handlers
 
-    private void OnTrackChanged(TrackInfo track)
-    {
-        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() => UpdateTrack(track)));
-    }
+    private void OnTrackChanged(TrackInfo track) => UpdateTrack(track);
 
-    private void OnPlaybackStateChanged(PlaybackState state)
-    {
-        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() => UpdatePlaybackState(state)));
-    }
+    private void OnSourceStatusChanged(PlayerCapConnection connection) => UpdateBridgeStatus();
 
-    private void OnPositionChanged(TimeSpan position)
+    private void UpdateTrack(TrackInfo track)
     {
-        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() => UpdatePosition(position)));
-    }
-
-    private void OnShuffleChanged(bool active)
-    {
-        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() => SetShuffleVisual(active)));
-    }
-
-    private void OnSourceStatusChanged(PlayerCapConnection connection, string detail)
-    {
-        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
-        {
-            if (_music.IsPlayerCapActive) return;
-            TxtSourceKind.Text = connection == PlayerCapConnection.Connected
-                ? "PLAYERCAP READY"
-                : "SMTC";
-            SourceDot.Opacity = connection == PlayerCapConnection.Connected ? 1 : 0.35;
-        }));
-    }
-
-    private async void UpdateTrack(TrackInfo track)
-    {
+        var previous = _track;
+        bool songChanged = previous.SourceAppId != track.SourceAppId || previous.Title != track.Title ||
+                           previous.Artist != track.Artist || previous.Album != track.Album;
+        bool lyricsChanged = !ReferenceEquals(previous.Lyrics, track.Lyrics);
         _track = track;
 
-        if (track.IsEmpty || track.State == PlaybackState.Closed)
+        if (songChanged)
         {
-            TxtSongTitle.Text = "未在播放";
-            TxtArtist.Text = "打开音乐播放器开始播放";
-            TxtSource.Text = "未连接";
-            TxtSourceKind.Text = "SMTC";
-            TxtAlbum.Text = string.Empty;
-            TxtElapsed.Text = "0:00";
-            TxtTotal.Text = "0:00";
-            SliderSeek.Maximum = 1;
-            SliderSeek.Value = 0;
-            SliderSeek.IsEnabled = false;
-            BtnLike.IsEnabled = false;
-            BtnShuffle.IsEnabled = false;
-            SourceDot.Opacity = 0.35;
-            SetLyricTexts(string.Empty, "让音乐留在边缘",
-                "QQ音乐 / Spotify / 网易云 / Apple Music", string.Empty);
-            LyricMarker.Opacity = 0;
-            UpdateRailLyric("MUSIC", highlight: false);
-            SetShuffleVisual(false);
-            await ClearArtworkAsync();
-            UpdatePlaybackState(PlaybackState.Closed);
-            return;
+            _isSeeking = _seekPending = false;
+            ++_seekVersion;
+            _activeLyricLine = null;
+            StopLyricTransition();
+            TrackHeader.Visibility = track.IsEmpty ? Visibility.Collapsed : Visibility.Visible;
+            TxtSource.Text = track.IsEmpty ? "待机" : track.SourceName;
+            TxtSongTitle.Text = track.IsEmpty ? "未在播放" : track.Title;
+            TxtSongTitle.ToolTip = track.IsEmpty ? null : track.Title;
+            TxtArtist.Text = track.IsEmpty ? "MusicEdgeX" : BuildSubtitle(track);
+            TxtArtist.ToolTip = track.IsEmpty ? null : TxtArtist.Text;
+            BtnOpenPlayer.Visibility = track.SourceName is "QQ 音乐" or "网易云音乐" or "Spotify"
+                ? Visibility.Visible : Visibility.Collapsed;
+            BtnOpenPlayer.ToolTip = $"打开{track.SourceName}";
+            BtnLike.IsEnabled = !track.IsEmpty && track.IsQQMusic;
         }
 
-        TxtSongTitle.Text = string.IsNullOrWhiteSpace(track.Title) ? "未知曲目" : track.Title;
-        TxtArtist.Text = string.IsNullOrWhiteSpace(track.Artist)
-            ? (string.IsNullOrWhiteSpace(track.Album) ? "未知艺术家" : track.Album)
-            : track.Artist;
-        TxtAlbum.Text = track.Album;
-        TxtSource.Text = track.SourceKind == "PlayerCap"
-            ? $"{track.SourceName} · 桥接歌词"
-            : track.SourceName;
-        TxtSourceKind.Text = track.SourceKind == "PlayerCap" ? "PLAYERCAP" : "SMTC";
-        BtnOpenPlayer.ToolTip = track.IsQQMusic ? "打开 QQ 音乐" : "打开播放器";
-        BtnLike.IsEnabled = track.IsQQMusic;
-        BtnShuffle.IsEnabled = track.SupportsShuffle;
-        _supportsShuffle = track.SupportsShuffle;
-        SetShuffleVisual(track.IsShuffleActive);
-        SourceDot.Opacity = 1;
-
-        double duration = Math.Max(0, track.Duration.TotalSeconds);
-        SliderSeek.IsEnabled = duration > 1;
-        SliderSeek.Maximum = duration > 1 ? duration : 1;
-        TxtTotal.Text = FormatTime(track.Duration);
-
-        if (!_isSeeking)
+        if (songChanged || previous.State != track.State || previous.Controls != track.Controls)
+            UpdatePlaybackControls();
+        if (songChanged || previous.Duration != track.Duration || previous.Controls != track.Controls)
         {
-            SliderSeek.Value = Math.Clamp(track.Position.TotalSeconds, 0, SliderSeek.Maximum);
-            TxtElapsed.Text = FormatTime(track.Position);
+            SliderSeek.Maximum = Math.Max(1, track.Duration.TotalSeconds);
+            SliderSeek.IsEnabled = track.Duration > TimeSpan.Zero && track.CanControl(PlaybackControls.Seek);
+            TxtTotal.Text = track.Duration > TimeSpan.Zero ? FormatTime(track.Duration) : "--:--";
         }
 
-        UpdatePlaybackState(track.State);
-        UpdateLyricSource(track);
+        if (previous.IsShuffleActive != track.IsShuffleActive)
+            SetShuffleVisual();
 
-        if (track.ThumbnailBytes is { Length: > 0 })
+        if (songChanged || lyricsChanged)
         {
-            ulong hash = QuickHash(track.ThumbnailBytes);
-            if (hash == _lastArtHash) return;
-            _lastArtHash = hash;
-
-            long version = ++_artVersion;
-            var result = DecodeArtwork(track.ThumbnailBytes);
-            if (version != _artVersion) return;
-
-            if (result == null)
-            {
-                await ClearArtworkAsync();
-                return;
-            }
-
-            AlbumArtBrush.ImageSource = result.Image;
-            MiniArtBrush.ImageSource = result.Image;
-            AlbumArtLayer.BeginAnimation(OpacityProperty, new DoubleAnimation(1, TimeSpan.FromMilliseconds(260)));
-            MiniArtLayer.BeginAnimation(OpacityProperty, new DoubleAnimation(1, TimeSpan.FromMilliseconds(260)));
-            ApplyAccent(result.AccentA, result.AccentB, result.AccentC);
+            _activeLyricIndex = int.MinValue;
+            if (track.Lyrics.Count == 0)
+                ShowLyricFallback();
         }
-        else if (_lastArtHash != 0)
-        {
-            await ClearArtworkAsync();
-        }
+
+        if (songChanged || lyricsChanged || previous.LyricSource != track.LyricSource ||
+            previous.HasMediaSession != track.HasMediaSession)
+            UpdateBridgeStatus();
+
+        if (songChanged || lyricsChanged || _state != PanelState.Hidden)
+            UpdatePosition(track.Position);
+        if (songChanged || !ReferenceEquals(_artworkBytes, track.ThumbnailBytes))
+            UpdateArtwork(track.ThumbnailBytes, songChanged);
     }
 
-    private void UpdateLyricSource(TrackInfo track)
+    private void UpdateBridgeStatus()
     {
-        _lyrics = track.Lyrics ?? Array.Empty<LyricLine>();
-        _activeLyricIndex = -1;
-
-        if (_lyrics.Count == 0)
+        string text = _music.Connection switch
         {
-            string current;
-            string hint;
+            PlayerCapConnection.Connected when _track.IsEmpty => "歌词桥接已连接",
+            PlayerCapConnection.Connected when _track.LyricSource.Length == 0 => "歌词桥接已连接 · 等待匹配曲目",
+            PlayerCapConnection.Connected when _track.Lyrics.Count == 0 => "歌词桥接已连接 · 暂无歌词",
+            PlayerCapConnection.Connected => "歌词桥接已连接",
+            PlayerCapConnection.Probing or PlayerCapConnection.Connecting => "正在连接歌词桥接",
+            PlayerCapConnection.Unreachable or PlayerCapConnection.Disconnected => "歌词桥接未连接 · 将自动重试",
+            _ => _settings.UsePlayerCap ? "等待歌词桥接连接" : "歌词桥接已关闭"
+        };
 
-            if (track.SourceKind == "PlayerCap")
-            {
-                current = "纯音乐，请欣赏";
-                hint = string.IsNullOrWhiteSpace(track.Album) ? "当前曲目没有歌词数据" : track.Album;
-            }
-            else
-            {
-                current = "正在聆听";
-                hint = "启用 PlayerCap 可显示边缘歌词";
-            }
-
-            SetLyricTexts(string.Empty, current, hint, string.Empty);
-            LyricMarker.Opacity = 0;
-            UpdateRailLyric(string.IsNullOrWhiteSpace(track.Title) ? "MUSIC" : track.Title,
-                highlight: false);
-            return;
-        }
-
-        UpdateLyricForPosition(track.Position, force: true);
+        if (!_track.IsEmpty && !_track.HasMediaSession)
+            text = "仅显示歌词 · " + text;
+        if (text != TxtBridgeStatus.Text) TxtBridgeStatus.Text = text;
+        TxtBridgeStatus.ToolTip = text;
     }
 
-    private void UpdateLyricForPosition(TimeSpan position, bool force = false)
+    private void ShowLyricFallback()
     {
-        if (_lyrics.Count == 0) return;
+        _activeLyricLine = null;
+        StopLyricTransition();
+        var title = _track.IsEmpty ? "等一首歌" : "暂无歌词";
+        var hint = _track.IsEmpty ? "请在 QQ 音乐、网易云音乐等客户端开始播放。" : "";
+        SetLyricTexts("", title, hint, "");
+        LyricAccent.Opacity = 0.65;
+        UpdateRailLyric(_track.IsEmpty ? "待机" : _track.Title, highlight: false);
+    }
 
-        int index = FindLyricIndex(position);
-        if (!force && index == _activeLyricIndex) return;
+    private void UpdateLyricForPosition(TimeSpan position)
+    {
+        var lyrics = _track.Lyrics;
+        if (lyrics.Count == 0) return;
+
+        int index = LyricTiming.FindLine(lyrics, position, _settings.LyricOffsetMs);
+        if (index == _activeLyricIndex) return;
         _activeLyricIndex = index;
 
-        int currentIndex = index < 0 ? 0 : index;
-        var current = _lyrics[currentIndex];
-        var previous = currentIndex > 0 ? _lyrics[currentIndex - 1] : null;
-        var next = currentIndex + 1 < _lyrics.Count ? _lyrics[currentIndex + 1] : null;
-
-        SetLyricTexts(
-            previous?.Text ?? string.Empty,
-            current.Text,
-            current.Translation,
-            next?.Text ?? string.Empty);
-
-        LyricMarker.Opacity = 1;
-        UpdateRailLyric(current.Text, highlight: true);
-        AnimateLyricChange();
+        var previous = index > 0 ? lyrics[index - 1] : null;
+        var current = index >= 0 ? lyrics[index] : null;
+        var next = index + 1 < lyrics.Count ? lyrics[index + 1] : null;
+        bool changed = current?.Start != _activeLyricLine?.Start || current?.Text != _activeLyricLine?.Text;
+        _activeLyricLine = current;
+        SetLyricTexts(previous?.Text ?? "", current?.Text ?? "等待歌词", current?.Translation ?? "", next?.Text ?? "");
+        LyricAccent.Opacity = current == null ? 0.65 : 1;
+        UpdateRailLyric(current?.Text ?? _track.Title, highlight: current != null);
+        if (changed && current != null && _state == PanelState.Expanded && _track.State == PlaybackState.Playing &&
+            !_isSeeking && !_seekPending && SystemParameters.ClientAreaAnimation)
+            AnimateLyricTransition();
     }
 
-    private int FindLyricIndex(TimeSpan position)
+    private void AnimateLyricTransition()
     {
-        int low = 0;
-        int high = _lyrics.Count - 1;
-        int result = -1;
-
-        while (low <= high)
+        var sweep = new DoubleAnimation(-0.48, 0.82, TimeSpan.FromMilliseconds(420))
         {
-            int mid = (low + high) / 2;
-            if (_lyrics[mid].Start <= position)
+            EasingFunction = new SineEase { EasingMode = EasingMode.EaseOut },
+            FillBehavior = FillBehavior.Stop
+        };
+        LyricLightShift.BeginAnimation(TranslateTransform.XProperty, sweep);
+        LyricLightLayer.BeginAnimation(OpacityProperty, new DoubleAnimationUsingKeyFrames
+        {
+            FillBehavior = FillBehavior.Stop,
+            KeyFrames =
             {
-                result = mid;
-                low = mid + 1;
+                new LinearDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.Zero)),
+                new SplineDoubleKeyFrame(1, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(96)),
+                    new KeySpline(0.22, 0.75, 0.50, 1)),
+                new LinearDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(420)))
             }
-            else
-            {
-                high = mid - 1;
-            }
-        }
+        });
+        var settle = TimeSpan.FromMilliseconds(180);
+        TxtLyricCurrent.BeginAnimation(OpacityProperty,
+            new DoubleAnimation(0.82, 1, settle) { FillBehavior = FillBehavior.Stop });
+        ((TranslateTransform)TxtLyricCurrent.RenderTransform).BeginAnimation(TranslateTransform.YProperty,
+            new DoubleAnimation(3, 0, settle) { FillBehavior = FillBehavior.Stop });
+    }
 
-        return result;
+    private void StopLyricTransition()
+    {
+        LyricLightShift.BeginAnimation(TranslateTransform.XProperty, null);
+        LyricLightLayer.BeginAnimation(OpacityProperty, null);
+        TxtLyricCurrent.BeginAnimation(OpacityProperty, null);
+        ((TranslateTransform)TxtLyricCurrent.RenderTransform).BeginAnimation(TranslateTransform.YProperty, null);
     }
 
     private void SetLyricTexts(string previous, string current, string translation, string next)
     {
         TxtLyricPrev.Text = previous;
+        TxtLyricPrev.Visibility = previous.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
         TxtLyricCurrent.Text = current;
+        TxtLyricCurrent.ToolTip = current;
         TxtLyricTranslation.Text = translation;
-        TxtLyricTranslation.Visibility = string.IsNullOrWhiteSpace(translation)
-            ? Visibility.Collapsed
-            : Visibility.Visible;
+        TxtLyricTranslation.Visibility = translation.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
         TxtLyricNext.Text = next;
+        TxtLyricNext.Visibility = next.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
     }
 
-    private void AnimateLyricChange()
+    private void UpdateRailLyric(string text, bool highlight)
     {
-        var ease = new System.Windows.Media.Animation.CubicEase { EasingMode = EasingMode.EaseOut };
-        TxtLyricCurrent.BeginAnimation(OpacityProperty,
-            new DoubleAnimation(0.35, 1, TimeSpan.FromMilliseconds(220)) { EasingFunction = ease });
+        text = text.Replace('\r', ' ').Replace('\n', ' ').Trim();
+        if (_lastRailLyric == text && _lastRailHighlight == highlight) return;
+        _lastRailLyric = text;
+        _lastRailHighlight = highlight;
 
-        if (TxtLyricCurrent.RenderTransform is TranslateTransform shift)
+        bool vertical = ContainsCjk(text);
+        TxtRailLyric.Width = vertical ? double.NaN : 152;
+        TxtRailLyric.LayoutTransform = vertical
+            ? Transform.Identity
+            : new RotateTransform(_settings.EdgeSide == "Left" ? 90 : -90);
+        TxtRailLyric.ToolTip = text;
+        TxtRailLyric.Foreground = highlight
+            ? (Brush)FindResource("TextPrimary")
+            : (Brush)FindResource("TextSecondary");
+        RailLyricMark.Opacity = highlight ? 1 : 0.55;
+
+        if (!vertical)
         {
-            shift.BeginAnimation(TranslateTransform.YProperty,
-                new DoubleAnimation(5, 0, TimeSpan.FromMilliseconds(260)) { EasingFunction = ease });
+            TxtRailLyric.Text = text;
+            return;
         }
+
+        var characters = StringInfo.GetTextElementEnumerator(text);
+        var visible = new List<string>(8);
+        while (characters.MoveNext())
+        {
+            var character = characters.GetTextElement();
+            if (string.IsNullOrWhiteSpace(character)) continue;
+            if (visible.Count == 7)
+            {
+                visible.Add("…");
+                break;
+            }
+            visible.Add(character);
+        }
+        TxtRailLyric.Text = string.Join('\n', visible);
     }
 
-    private void UpdateRailLyric(string text, bool highlight, bool force = false)
-    {
-        text = (text ?? string.Empty).Trim();
-        if (string.IsNullOrEmpty(text)) text = "MUSIC";
-
-        var key = $"{highlight}|{text}";
-        if (!force && string.Equals(key, _lastRailLyric, StringComparison.Ordinal)) return;
-        _lastRailLyric = key;
-        _lastRailLyricText = text;
-        _lastRailLyricHighlight = highlight;
-
-        RailLyricPanel.Children.Clear();
-        var chars = text.Where(ch => !char.IsControl(ch)).Take(7).ToArray();
-        var accent = TryFindResource("AccentBrush") as Brush ?? Brushes.White;
-        var secondary = TryFindResource("TextSecondary") as Brush ?? Brushes.Gray;
-
-        for (int i = 0; i < chars.Length; i++)
-        {
-            if (char.IsWhiteSpace(chars[i])) continue;
-
-            RailLyricPanel.Children.Add(new TextBlock
-            {
-                Text = chars[i].ToString(),
-                FontFamily = new FontFamily("Songti SC, SimSun, Noto Serif CJK SC"),
-                FontSize = 12.5,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                Margin = new Thickness(0, 1, 0, 1),
-                Foreground = highlight && i == 0 ? accent : secondary,
-                Opacity = highlight ? 0.92 : 0.55
-            });
-        }
-
-        if (chars.Length == 7 && text.Length > 7)
-        {
-            RailLyricPanel.Children.Add(new TextBlock
-            {
-                Text = "·",
-                FontSize = 12,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                Foreground = secondary,
-                Opacity = 0.5
-            });
-        }
-    }
+    private static bool ContainsCjk(string text) => text.Any(ch =>
+        ch is >= '\u3400' and <= '\u9FFF' or >= '\u3040' and <= '\u30FF' or >= '\uAC00' and <= '\uD7AF');
 
     private void UpdatePosition(TimeSpan position)
     {
-        if (!_isSeeking && !_track.IsEmpty && _track.Duration > TimeSpan.Zero)
+        if (!_isSeeking && !_seekPending)
         {
-            double seconds = Math.Clamp(position.TotalSeconds, 0, SliderSeek.Maximum);
-            SliderSeek.Value = seconds;
-            TxtElapsed.Text = FormatTime(position);
+            var elapsed = _track.IsEmpty ? "--:--" : FormatTime(position);
+            if (TxtElapsed.Text != elapsed) TxtElapsed.Text = elapsed;
+            if (!_track.IsEmpty)
+                SliderSeek.Value = Math.Clamp(position.TotalSeconds, 0, SliderSeek.Maximum);
+            else
+                SliderSeek.Value = 0;
+            UpdateLyricForPosition(position);
+            UpdateEdgeProgress(position);
         }
-
-        UpdateLyricForPosition(position);
     }
 
-    private void UpdatePlaybackState(PlaybackState state)
+    private void UpdatePlaybackControls()
     {
-        _isPlaying = state == PlaybackState.Playing;
-
-        var data = _isPlaying ? PauseIconData : PlayIconData;
-        PlayIcon.Data = Geometry.Parse(data);
-        RailPlayIcon.Data = Geometry.Parse(data);
-
-        RailPlayingDot.Opacity = _isPlaying ? 1 : 0;
+        bool playing = _track.State == PlaybackState.Playing && !_track.IsEmpty;
+        PlayIcon.Data = RailPlayIcon.Data = playing ? PauseGeometry : PlayGeometry;
+        BtnPlayPause.IsEnabled = BtnRailPlay.IsEnabled = _track.CanControl(PlaybackControls.PlayPause);
+        BtnPlayPause.ToolTip = BtnRailPlay.ToolTip = playing ? "暂停" : "播放";
+        BtnPrevious.IsEnabled = _track.CanControl(PlaybackControls.Previous);
+        BtnNext.IsEnabled = _track.CanControl(PlaybackControls.Next);
+        BtnShuffle.IsEnabled = _track.CanControl(PlaybackControls.Shuffle);
+        TxtSource.Text = _track.IsEmpty ? "待机" :
+            _track.State == PlaybackState.Paused ? $"{_track.SourceName} · 已暂停" : _track.SourceName;
+        UpdateRailPlayingDot();
     }
 
-    private void UpdateRailPlayingDot()
+    private static Geometry ParseFrozenGeometry(string data)
     {
-        RailPlayingDot.Opacity = _isPlaying ? 1 : 0;
+        var geometry = Geometry.Parse(data);
+        geometry.Freeze();
+        return geometry;
     }
 
-    private void SetShuffleVisual(bool active)
-    {
-        _shuffleActive = active;
-        var brush = active
-            ? TryFindResource("AccentBrush") as Brush ?? Brushes.White
-            : TryFindResource("TextSecondary") as Brush ?? Brushes.Gray;
+    private void UpdateRailPlayingDot() =>
+        RailPlayingDot.Opacity = _track.State == PlaybackState.Playing && !_track.IsEmpty ? 1 : 0;
 
-        BtnShuffle.Foreground = brush;
-        ShuffleIcon.Fill = brush;
-        BtnShuffle.ToolTip = active ? "随机播放：开" : "随机播放：关";
+    private void UpdateEdgeProgress(TimeSpan position)
+    {
+        bool hasProgress = !_track.IsEmpty && _track.Duration > TimeSpan.Zero;
+        if (EdgeProgressFill.RenderTransform is ScaleTransform scale)
+            scale.ScaleY = hasProgress ? Math.Clamp(position / _track.Duration, 0, 1) : 0;
+        EdgeProgressFill.Opacity = hasProgress ? 1 : 0;
     }
 
-    private void ApplyAccent(Color a, Color b, Color c)
+    private void SetShuffleVisual()
     {
-        var solid = new SolidColorBrush(a);
-        solid.Freeze();
+        BtnShuffle.Foreground = (Brush)FindResource(_track.IsShuffleActive ? "AccentBrush" : "TextSecondary");
+        BtnShuffle.ToolTip = _track.IsShuffleActive ? "随机播放：开" : "随机播放：关";
+    }
 
-        Resources["AccentBrush"] = solid;
+    private async void UpdateArtwork(byte[]? bytes, bool songChanged)
+    {
+        if (ReferenceEquals(bytes, _artworkBytes)) return;
+        _artworkBytes = bytes;
+        long version = Interlocked.Increment(ref _artVersion);
+        if (songChanged || bytes == null)
+            ApplyArtwork(null);
+        if (bytes == null) return;
 
-        SetShuffleVisual(_shuffleActive);
+        var result = await Task.Run(() =>
+        {
+            lock (_artworkGate)
+            {
+                if (version != Volatile.Read(ref _artVersion)) return null;
+                string key = Convert.ToHexString(SHA256.HashData(bytes));
+                if (!_artworkCache.TryGetValue(key, out var artwork))
+                {
+                    artwork = DecodeArtwork(bytes);
+                    if (_artworkCache.Count >= 8)
+                        _artworkCache.Remove(_artworkCache.Keys.First());
+                    _artworkCache.Add(key, artwork);
+                }
+                return artwork;
+            }
+        });
+        if (version == _artVersion) ApplyArtwork(result);
+    }
+
+    private void ApplyArtwork(ArtworkResult? artwork)
+    {
+        AlbumArtBrush.ImageSource = MiniArtBrush.ImageSource = artwork?.Image;
+        AlbumArtLayer.Opacity = MiniArtLayer.Opacity = artwork != null ? 1 : 0;
+        var accent = artwork?.Accent ?? DefaultAccent;
+        Resources["AccentBrush"] = new SolidColorBrush(accent);
+        LyricLightOuter.Color = Color.FromArgb(0x12, accent.R, accent.G, accent.B);
+        LyricLightCenter.Color = Color.FromArgb(0x44, accent.R, accent.G, accent.B);
+
+        SetShuffleVisual();
         UpdatePinVisual();
-        UpdateRailLyric(_lastRailLyricText, _lastRailLyricHighlight, force: true);
-    }
-
-    private void ResetAccent()
-    {
-        ApplyAccent(DefaultAccentA, DefaultAccentB, DefaultAccentC);
-    }
-
-    private async Task ClearArtworkAsync()
-    {
-        _lastArtHash = 0;
-        long version = ++_artVersion;
-        AlbumArtLayer.BeginAnimation(OpacityProperty, new DoubleAnimation(0, TimeSpan.FromMilliseconds(140)));
-        MiniArtLayer.BeginAnimation(OpacityProperty, new DoubleAnimation(0, TimeSpan.FromMilliseconds(140)));
-        await Task.Delay(150);
-        if (version != _artVersion) return;
-
-        AlbumArtBrush.ImageSource = null;
-        MiniArtBrush.ImageSource = null;
-        ResetAccent();
+        UpdateVolumeVisual();
     }
 
     private static ArtworkResult? DecodeArtwork(byte[] bytes)
     {
-        var image = DecodeImage(bytes);
-        if (image == null) return null;
-
-        var (a, b, c) = ExtractPalette(image);
-        return new ArtworkResult(image, a, b, c);
-    }
-
-    private static BitmapImage? DecodeImage(byte[] bytes)
-    {
         try
         {
             using var stream = new MemoryStream(bytes);
+            var frame = BitmapDecoder.Create(stream, BitmapCreateOptions.DelayCreation,
+                BitmapCacheOption.None).Frames[0];
+            int width = frame.PixelWidth;
+            int height = frame.PixelHeight;
+            stream.Position = 0;
+
             var image = new BitmapImage();
             image.BeginInit();
             image.CacheOption = BitmapCacheOption.OnLoad;
-            image.DecodePixelWidth = 512;
+            if (Math.Max(width, height) > 160)
+            {
+                if (width >= height) image.DecodePixelWidth = 160;
+                else image.DecodePixelHeight = 160;
+            }
             image.StreamSource = stream;
             image.EndInit();
             image.Freeze();
-            return image;
+            return new ArtworkResult(image, ExtractAccent(image));
         }
-        catch
+        catch (Exception ex)
         {
+            Debug.WriteLine(ex);
             return null;
         }
     }
 
-    private static (Color A, Color B, Color C) ExtractPalette(BitmapSource source)
+    private static Color ExtractAccent(BitmapSource source)
     {
         try
         {
@@ -877,8 +873,6 @@ public partial class MainWindow : Window
             var scaled = new TransformedBitmap(source,
                 new ScaleTransform(size / (double)source.PixelWidth, size / (double)source.PixelHeight));
             var converted = new FormatConvertedBitmap(scaled, PixelFormats.Bgra32, null, 0);
-            converted.Freeze();
-
             int stride = size * 4;
             var pixels = new byte[size * stride];
             converted.CopyPixels(pixels, stride, 0);
@@ -886,43 +880,27 @@ public partial class MainWindow : Window
             double sumR = 0, sumG = 0, sumB = 0, totalWeight = 0;
             for (int i = 0; i < pixels.Length; i += 4)
             {
-                double b = pixels[i];
-                double g = pixels[i + 1];
-                double r = pixels[i + 2];
+                double b = pixels[i], g = pixels[i + 1], r = pixels[i + 2];
                 double max = Math.Max(r, Math.Max(g, b));
                 double min = Math.Min(r, Math.Min(g, b));
-                if (max < 42) continue;
-
-                double saturation = (max - min) / max;
-                if (saturation < 0.14) continue;
-
-                double weight = saturation * (max / 255.0);
+                double weight = (max - min) / 255 * (pixels[i + 3] / 255.0);
+                if (max < 42 || weight < 0.09) continue;
                 sumR += r * weight;
                 sumG += g * weight;
                 sumB += b * weight;
                 totalWeight += weight;
             }
+            if (totalWeight < 2) return DefaultAccent;
 
-            if (totalWeight < 2)
-                return (DefaultAccentA, DefaultAccentB, DefaultAccentC);
-
-            var dominant = Color.FromRgb(
-                (byte)Math.Clamp(sumR / totalWeight, 0, 255),
-                (byte)Math.Clamp(sumG / totalWeight, 0, 255),
-                (byte)Math.Clamp(sumB / totalWeight, 0, 255));
-
-            var (h, s, l) = RgbToHsl(dominant);
-            s = Math.Clamp(s * 1.15 + 0.16, 0.55, 0.86);
-            l = Math.Clamp(l, 0.56, 0.72);
-
-            return (
-                HslToColor(h, s, l),
-                HslToColor(h + 18, Math.Min(0.9, s + 0.04), l * 0.92),
-                HslToColor(h - 14, s * 0.92, l * 0.82));
+            var dominant = Color.FromRgb((byte)(sumR / totalWeight),
+                (byte)(sumG / totalWeight), (byte)(sumB / totalWeight));
+            var (hue, saturation, _) = RgbToHsl(dominant);
+            return HslToColor(hue, Math.Clamp(saturation, 0.38, 0.72), 0.77);
         }
-        catch
+        catch (Exception ex)
         {
-            return (DefaultAccentA, DefaultAccentB, DefaultAccentC);
+            Debug.WriteLine(ex);
+            return DefaultAccent;
         }
     }
 
@@ -975,17 +953,6 @@ public partial class MainWindow : Window
             (byte)Math.Round((b + m) * 255));
     }
 
-    private static ulong QuickHash(byte[] bytes)
-    {
-        ulong hash = 1469598103934665603;
-        foreach (byte value in bytes)
-        {
-            hash ^= value;
-            hash *= 1099511628211;
-        }
-        return hash;
-    }
-
     #endregion
 
     #region Transport commands
@@ -997,70 +964,71 @@ public partial class MainWindow : Window
 
     private async Task TogglePlayPauseAsync()
     {
-        bool ok = await _music.TogglePlayPauseAsync();
-        if (!ok)
-            _mediaKeys.TogglePlayPause();
-
-        _isPlaying = !_isPlaying;
-        UpdatePlaybackState(_isPlaying ? PlaybackState.Playing : PlaybackState.Paused);
+        if (!await _music.TogglePlayPauseAsync()) ShowTransportUnavailable("播放或暂停");
     }
 
-    private async void BtnNext_Click(object sender, RoutedEventArgs e)
-    {
-        await NextAsync();
-    }
+    private async void BtnNext_Click(object sender, RoutedEventArgs e) => await NextAsync();
 
     private async Task NextAsync()
     {
-        if (!await _music.SkipNextAsync())
-            _mediaKeys.NextTrack();
+        if (!await _music.SkipNextAsync()) ShowTransportUnavailable("下一首");
     }
 
-    private async void BtnPrevious_Click(object sender, RoutedEventArgs e)
-    {
-        await PreviousAsync();
-    }
+    private async void BtnPrevious_Click(object sender, RoutedEventArgs e) => await PreviousAsync();
 
     private async Task PreviousAsync()
     {
-        if (!await _music.SkipPreviousAsync())
-            _mediaKeys.PreviousTrack();
+        if (!await _music.SkipPreviousAsync()) ShowTransportUnavailable("上一首");
     }
 
     private async void BtnShuffle_Click(object sender, RoutedEventArgs e)
     {
-        if (!_supportsShuffle)
-        {
-            ShowToast("当前播放器不支持随机切换");
-            return;
-        }
+        if (!await _music.SetShuffleAsync(!_track.IsShuffleActive))
+            ShowTransportUnavailable("切换随机播放");
+    }
 
-        bool target = !_shuffleActive;
-        if (await _music.SetShuffleAsync(target))
-        {
-            SetShuffleVisual(target);
-            ShowToast(target ? "随机播放：开" : "随机播放：关");
-        }
-        else
-        {
-            ShowToast("切换随机播放失败");
-        }
+    private void ShowTransportUnavailable(string action)
+    {
+        if (_state != PanelState.Hidden)
+            ShowToast(_track.HasMediaSession ? $"播放器未能执行{action}" : "当前没有可控制的音乐会话");
     }
 
     private void BtnLike_Click(object sender, RoutedEventArgs e)
     {
-        if (!_track.IsQQMusic)
+        if (_track.IsEmpty || !_track.IsQQMusic)
         {
-            ShowToast("收藏仅支持 QQ 音乐");
+            if (_state != PanelState.Hidden) ShowToast("收藏仅支持正在显示的 QQ 音乐曲目");
             return;
         }
 
-        ShowToast(_qqMusic.ToggleLike() ? "已发送收藏快捷键" : "QQ 音乐未运行");
+        if (_qqMusic.ToggleLike())
+        {
+            FlashLike();
+            ShowToast("已发送收藏快捷键");
+        }
+        else
+        {
+            ShowToast("QQ 音乐未运行");
+        }
+    }
+
+    private void FlashLike()
+    {
+        var original = BtnLike.Foreground;
+        BtnLike.Foreground = TryFindResource("AccentBrush") as Brush ?? Brushes.White;
+
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(520) };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            BtnLike.Foreground = original;
+        };
+        timer.Start();
     }
 
     private void BtnPlaylist_Click(object sender, RoutedEventArgs e)
     {
-        if (!QQMusicHotkeyService.OpenPlayer(_track.SourceAppId, _track.SourceName))
+        if (!QQMusicHotkeyService.OpenPlayer(_track.SourceName))
             ShowToast("未能启动播放器");
     }
 
@@ -1079,40 +1047,68 @@ public partial class MainWindow : Window
 
     private void SliderSeek_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        _isSeeking = true;
+        if (_seekPending) e.Handled = true;
+        else
+        {
+            _isSeeking = true;
+            StopLyricTransition();
+        }
     }
 
-    private async void SliderSeek_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
-    {
+    private async void SliderSeek_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e) =>
         await CommitSeekAsync();
+
+    private async void SliderSeek_LostMouseCapture(object sender, MouseEventArgs e) =>
+        await CommitSeekAsync();
+
+    private async void SliderSeek_MouseLeave(object sender, MouseEventArgs e)
+    {
+        if (!SliderSeek.IsMouseCaptureWithin)
+            await CommitSeekAsync();
     }
 
-    private async void SliderSeek_LostMouseCapture(object sender, MouseEventArgs e)
+    private async void SliderSeek_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (_isSeeking)
-            await CommitSeekAsync();
+        double? offset = e.Key switch
+        {
+            Key.Left or Key.Down => -SliderSeek.SmallChange,
+            Key.Right or Key.Up => SliderSeek.SmallChange,
+            Key.PageDown => -SliderSeek.LargeChange,
+            Key.PageUp => SliderSeek.LargeChange,
+            Key.Home => -SliderSeek.Value,
+            Key.End => SliderSeek.Maximum - SliderSeek.Value,
+            _ => null
+        };
+        if (offset == null) return;
+        e.Handled = true;
+        if (_seekPending) return;
+
+        _isSeeking = true;
+        SliderSeek.Value = Math.Clamp(SliderSeek.Value + offset.Value, 0, SliderSeek.Maximum);
+        await CommitSeekAsync();
     }
 
     private async Task CommitSeekAsync()
     {
         if (!_isSeeking) return;
         _isSeeking = false;
+        _seekPending = true;
 
-        if (_track.Duration <= TimeSpan.Zero)
-            return;
-
-        var target = TimeSpan.FromSeconds(SliderSeek.Value);
-        _music.NotifySeekPreview(target);
-
-        if (!await _music.SeekAsync(target))
-            ShowToast("当前播放器不支持拖动进度");
+        long version = ++_seekVersion;
+        bool success = await _music.SeekAsync(TimeSpan.FromSeconds(SliderSeek.Value));
+        if (version != _seekVersion) return;
+        _seekPending = false;
+        UpdatePosition(_music.CurrentPosition);
+        if (!success) ShowToast("跳转失败，已恢复播放位置");
     }
 
     private void SliderSeek_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
-        if (TxtElapsed is null) return;
-        if (_isSeeking)
-            TxtElapsed.Text = FormatTime(TimeSpan.FromSeconds(e.NewValue));
+        if (!_isSeeking) return;
+        var preview = TimeSpan.FromSeconds(e.NewValue);
+        TxtElapsed.Text = FormatTime(preview);
+        UpdateLyricForPosition(preview);
+        UpdateEdgeProgress(preview);
     }
 
     private void SliderVolume_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -1286,6 +1282,17 @@ public partial class MainWindow : Window
     public void FocusPanelWindow()
     {
         ShowPanelFromTray();
+        int style = GetWindowLong(_hwnd, GWL_EXSTYLE);
+        SetWindowLong(_hwnd, GWL_EXSTYLE, style & ~WS_EX_NOACTIVATE);
+        try
+        {
+            Activate();
+            BtnSettings.Focus();
+        }
+        finally
+        {
+            SetWindowLong(_hwnd, GWL_EXSTYLE, style);
+        }
     }
 
     #endregion
@@ -1295,16 +1302,32 @@ public partial class MainWindow : Window
     private void ShowToast(string message)
     {
         TxtToast.Text = message;
-        ToastHost.BeginAnimation(OpacityProperty, new DoubleAnimation(1, TimeSpan.FromMilliseconds(120)));
+        SetToastOpacity(1);
 
         _toastTimer?.Stop();
         _toastTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1700) };
         _toastTimer.Tick += (_, _) =>
         {
             _toastTimer?.Stop();
-            ToastHost.BeginAnimation(OpacityProperty, new DoubleAnimation(0, TimeSpan.FromMilliseconds(260)));
+            SetToastOpacity(0);
         };
         _toastTimer.Start();
+    }
+
+    private void SetToastOpacity(double opacity)
+    {
+        ToastHost.BeginAnimation(OpacityProperty, null);
+        if (!SystemParameters.ClientAreaAnimation)
+        {
+            ToastHost.Opacity = opacity;
+            return;
+        }
+
+        double previous = ToastHost.Opacity;
+        ToastHost.Opacity = opacity;
+        ToastHost.BeginAnimation(OpacityProperty,
+            new DoubleAnimation(previous, opacity, TimeSpan.FromMilliseconds(140))
+            { FillBehavior = FillBehavior.Stop });
     }
 
     private static string FormatTime(TimeSpan time)
@@ -1315,7 +1338,17 @@ public partial class MainWindow : Window
             : time.ToString(@"m\:ss");
     }
 
-    private sealed record ArtworkResult(BitmapImage Image, Color AccentA, Color AccentB, Color AccentC);
+    private static string BuildSubtitle(TrackInfo track)
+    {
+        string artist = string.IsNullOrWhiteSpace(track.Artist)
+            ? "未知艺术家"
+            : track.Artist.Trim();
+        string album = track.Album?.Trim() ?? string.Empty;
+
+        return string.IsNullOrWhiteSpace(album) ? artist : $"{artist} · {album}";
+    }
+
+    private sealed record ArtworkResult(BitmapImage Image, Color Accent);
 
     #endregion
 }

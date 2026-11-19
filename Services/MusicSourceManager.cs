@@ -3,59 +3,36 @@ using MusicEdge.Models;
 
 namespace MusicEdge.Services;
 
-/// <summary>
-/// Merges a zero-config SMTC source with the optional PlayerCap bridge.
-/// Metadata, cover and lyrics prefer PlayerCap when it is the active player;
-/// transport commands always go through SMTC (with media-key fallback in the UI).
-/// </summary>
 public sealed class MusicSourceManager : IDisposable
 {
     public event Action<TrackInfo>? TrackChanged;
-    public event Action<PlaybackState>? PlaybackStateChanged;
     public event Action<TimeSpan>? PositionChanged;
-    public event Action<bool>? ShuffleChanged;
-    public event Action<IReadOnlyList<LyricLine>>? LyricsChanged;
-    public event Action<PlayerCapConnection, string>? SourceStatusChanged;
+    public event Action<PlayerCapConnection>? SourceStatusChanged;
 
-    private readonly SMTCMusicService _smtc;
-    private readonly DispatcherTimer _ticker;
-    private readonly object _gate = new();
+    private readonly Dispatcher _dispatcher = Dispatcher.CurrentDispatcher;
+    private readonly SMTCMusicService _smtc = new();
+    private readonly DispatcherTimer _ticker = new(DispatcherPriority.Background)
+    {
+        Interval = TimeSpan.FromMilliseconds(200)
+    };
     private AppSettings _settings;
     private PlayerCapService? _cap;
-    private TrackInfo _current = new() { State = PlaybackState.Closed };
-    private PlaybackState _lastState = PlaybackState.Closed;
-    private string _lastTrackKey = string.Empty;
-    private bool _capActive;
+    private TrackInfo _current = new();
+    private TimeSpan _lastPublishedPosition = TimeSpan.MinValue;
     private bool _panelVisible;
     private bool _running;
-    private bool _disposed;
 
     public MusicSourceManager(AppSettings settings)
     {
         _settings = settings.Clone();
-        _smtc = new SMTCMusicService();
-        _ticker = new DispatcherTimer(DispatcherPriority.Background)
-        {
-            Interval = TimeSpan.FromMilliseconds(250)
-        };
+        _smtc.Changed += Refresh;
         _ticker.Tick += (_, _) => PublishPosition();
-
-        _smtc.TrackChanged += OnSmtcTrackChanged;
-        _smtc.PlaybackStateChanged += OnSmtcStateChanged;
-        _smtc.ShuffleChanged += active => ShuffleChanged?.Invoke(active);
     }
 
-    public TrackInfo CurrentTrack => _current;
-
-    public bool IsPlayerCapActive
-    {
-        get { lock (_gate) return _capActive; }
-    }
-
-    public PlayerCapConnection PlayerCapConnection =>
-        _cap?.Connection ?? PlayerCapConnection.Idle;
-
-    public string PlayerCapPlayer => _cap?.ActivePlayer ?? string.Empty;
+    public PlayerCapConnection Connection { get; private set; }
+    public TimeSpan CurrentPosition => _current.IsEmpty ? TimeSpan.Zero :
+        _current.HasMediaSession && (_smtc.HasTimeline || _current.LyricSource.Length == 0)
+            ? _smtc.GetPosition() : _cap?.GetPosition() ?? TimeSpan.Zero;
 
     public bool IsPanelVisible
     {
@@ -64,232 +41,139 @@ public sealed class MusicSourceManager : IDisposable
         {
             if (_panelVisible == value) return;
             _panelVisible = value;
-            _smtc.IsPanelVisible = false;
-
-            if (value)
-            {
-                _ticker.Start();
-                PublishPosition();
-            }
-            else
-            {
-                _ticker.Stop();
-            }
+            UpdateTicker();
+            if (value) PublishPosition(force: true);
         }
     }
 
     public void Start()
     {
-        if (_running || _disposed) return;
+        if (_running) return;
         _running = true;
-
         _smtc.Start();
-        RebuildPlayerCap();
-        PublishMerged(forceTrack: true, forceState: true);
-    }
-
-    public void Stop()
-    {
-        if (!_running) return;
-        _running = false;
-        _ticker.Stop();
-        _smtc.Stop();
-
-        if (_cap != null)
-        {
-            UnsubscribeCap(_cap);
-            _cap.Stop();
-            _cap.Dispose();
-            _cap = null;
-        }
+        RebuildBridge();
     }
 
     public void UpdateSettings(AppSettings settings)
     {
-        bool hostChanged = !string.Equals(_settings.PlayerCapHost, settings.PlayerCapHost,
-            StringComparison.OrdinalIgnoreCase);
-        bool playerChanged = !string.Equals(_settings.PlayerCapPlayer, settings.PlayerCapPlayer,
-            StringComparison.Ordinal);
-        bool enabledChanged = _settings.UsePlayerCap != settings.UsePlayerCap;
-
+        bool rebuild = _settings.UsePlayerCap != settings.UsePlayerCap ||
+                       !string.Equals(_settings.PlayerCapHost, settings.PlayerCapHost, StringComparison.OrdinalIgnoreCase) ||
+                       !string.Equals(_settings.PlayerCapPlayer, settings.PlayerCapPlayer, StringComparison.OrdinalIgnoreCase);
         _settings = settings.Clone();
+        if (_running && rebuild)
+            RebuildBridge();
+    }
 
+    public Task<bool> TogglePlayPauseAsync() => _smtc.TogglePlayPauseAsync(CommandTarget);
+    public Task<bool> SkipNextAsync() => _smtc.SkipNextAsync(CommandTarget);
+    public Task<bool> SkipPreviousAsync() => _smtc.SkipPreviousAsync(CommandTarget);
+    public Task<bool> SeekAsync(TimeSpan position) => _smtc.SeekAsync(CommandTarget, position);
+    public Task<bool> SetShuffleAsync(bool active) => _smtc.SetShuffleAsync(CommandTarget, active);
+
+    private string CommandTarget => _current.HasMediaSession ? _current.SourceAppId : string.Empty;
+
+    private void RebuildBridge()
+    {
+        _cap?.Dispose();
+        _cap = null;
+        if (_settings.UsePlayerCap)
+        {
+            var bridge = new PlayerCapService(_settings.PlayerCapHost, _settings.PlayerCapPlayer);
+            int pending = 0;
+            bridge.Changed += () =>
+            {
+                if (Interlocked.Exchange(ref pending, 1) != 0) return;
+                _dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+                {
+                    Interlocked.Exchange(ref pending, 0);
+                    if (ReferenceEquals(bridge, _cap)) Refresh();
+                }));
+            };
+            _cap = bridge;
+            bridge.Start();
+        }
+
+        Refresh();
+    }
+
+    private void Refresh()
+    {
         if (!_running) return;
-        if (hostChanged || playerChanged || enabledChanged)
-            RebuildPlayerCap();
+        var cap = _cap?.GetSnapshot();
+        var connection = cap?.Connection ?? PlayerCapConnection.Idle;
+        bool connectionChanged = Connection != connection;
+        Connection = connection;
+        var snapshot = SelectTrack(_smtc.CurrentTrack,
+            connection == PlayerCapConnection.Connected ? cap?.Track : null,
+            _smtc.HasMaterialMusicSession, _smtc.HasOtherPlayback);
+
+        // Position updates do not invalidate the metadata or lyric controls.
+        if (_current != (snapshot with { Position = TimeSpan.Zero }))
+        {
+            _current = snapshot with { Position = TimeSpan.Zero };
+            TrackChanged?.Invoke(snapshot);
+        }
+        if (connectionChanged)
+            SourceStatusChanged?.Invoke(connection);
+
+        UpdateTicker();
+        if (_panelVisible) PublishPosition();
     }
 
-    public Task<bool> TogglePlayPauseAsync() => _smtc.TogglePlayPauseAsync();
-
-    public Task<bool> SkipNextAsync() => _smtc.SkipNextAsync();
-
-    public Task<bool> SkipPreviousAsync() => _smtc.SkipPreviousAsync();
-
-    public Task<bool> SeekAsync(TimeSpan position) => _smtc.SeekAsync(position);
-
-    public Task<bool> SetShuffleAsync(bool active) => _smtc.SetShuffleAsync(active);
-
-    public void NotifySeekPreview(TimeSpan position) => _smtc.NotifySeekPreview(position);
-
-    private void RebuildPlayerCap()
+    internal static TrackInfo SelectTrack(TrackInfo system, TrackInfo? bridge,
+        bool hasMusicSession, bool otherMediaPlaying)
     {
-        if (_cap != null)
+        bool hasBridgeTrack = bridge != null && !bridge.IsEmpty && MusicPlayers.FromBridge(bridge.SourceAppId) != null &&
+                              bridge.State is PlaybackState.Playing or PlaybackState.Paused;
+        if (!system.IsEmpty && system.HasMediaSession && MusicPlayers.FromAppId(system.SourceAppId) != null &&
+            system.State is PlaybackState.Playing or PlaybackState.Paused)
         {
-            UnsubscribeCap(_cap);
-            _cap.Stop();
-            _cap.Dispose();
-            _cap = null;
+            if (system.State == PlaybackState.Paused && otherMediaPlaying) return new TrackInfo();
+            if (hasBridgeTrack && MusicPlayers.SameSong(system, bridge!))
+            {
+                return system with
+                {
+                    ThumbnailBytes = bridge!.ThumbnailBytes ?? system.ThumbnailBytes,
+                    Duration = system.Duration > TimeSpan.Zero ? system.Duration : bridge.Duration,
+                    Position = system.Duration > TimeSpan.Zero ? system.Position : bridge.Position,
+                    Controls = system.Duration > TimeSpan.Zero ? system.Controls : system.Controls & ~PlaybackControls.Seek,
+                    Lyrics = bridge.Lyrics,
+                    LyricSource = bridge.LyricSource
+                };
+            }
+            return system;
         }
 
-        if (!_settings.UsePlayerCap)
-        {
-            SourceStatusChanged?.Invoke(PlayerCapConnection.Idle, "增强歌词源未启用");
-            PublishMerged(forceTrack: true);
-            return;
-        }
+        if (!hasMusicSession && hasBridgeTrack && (!otherMediaPlaying || bridge!.State == PlaybackState.Playing))
+            return bridge!;
 
-        _cap = new PlayerCapService(_settings.PlayerCapHost, _settings.PlayerCapPlayer);
-        _cap.TrackChanged += OnCapTrackChanged;
-        _cap.PlaybackStateChanged += OnCapStateChanged;
-        _cap.LyricsChanged += OnCapLyricsChanged;
-        _cap.ConnectionChanged += OnCapConnectionChanged;
-        _cap.Start();
+        return new TrackInfo();
     }
 
-    private void UnsubscribeCap(PlayerCapService cap)
+    private void UpdateTicker()
     {
-        cap.TrackChanged -= OnCapTrackChanged;
-        cap.PlaybackStateChanged -= OnCapStateChanged;
-        cap.LyricsChanged -= OnCapLyricsChanged;
-        cap.ConnectionChanged -= OnCapConnectionChanged;
+        bool shouldTick = _running && _panelVisible && !_current.IsEmpty && _current.State == PlaybackState.Playing;
+        if (shouldTick != _ticker.IsEnabled)
+            _ticker.IsEnabled = shouldTick;
     }
 
-    private void OnSmtcTrackChanged(TrackInfo track)
+    private void PublishPosition(bool force = false)
     {
-        PublishMerged(forceTrack: true);
-    }
-
-    private void OnSmtcStateChanged(PlaybackState state)
-    {
-        if (!_capActive)
-            PlaybackStateChanged?.Invoke(state);
-        else
-            PublishMerged();
-    }
-
-    private void OnCapTrackChanged(TrackInfo track)
-    {
-        PublishMerged(forceTrack: true);
-    }
-
-    private void OnCapStateChanged(PlaybackState state)
-    {
-        PublishMerged(forceState: true);
-    }
-
-    private void OnCapLyricsChanged(IReadOnlyList<LyricLine> lyrics)
-    {
-        LyricsChanged?.Invoke(lyrics);
-        PublishMerged(forceTrack: true);
-    }
-
-    private void OnCapConnectionChanged(PlayerCapConnection connection, string detail)
-    {
-        SourceStatusChanged?.Invoke(connection, detail);
-        if (connection != PlayerCapConnection.Connected)
-            PublishMerged(forceTrack: true, forceState: true);
-    }
-
-    private void PublishMerged(bool forceTrack = false, bool forceState = false)
-    {
-        var cap = _cap;
-        TrackInfo? capTrack = null;
-
-        if (cap != null && cap.Connection == PlayerCapConnection.Connected && cap.HasTrack)
-            capTrack = cap.CurrentTrack;
-
-        var smtcTrack = _smtc.CurrentTrack;
-        bool capActive = capTrack != null &&
-                         (capTrack.State == PlaybackState.Playing ||
-                          smtcTrack.IsEmpty ||
-                          (smtcTrack.State != PlaybackState.Playing &&
-                           capTrack.State == PlaybackState.Paused));
-
-        var source = capActive ? capTrack! : smtcTrack;
-        var merged = CloneWithPosition(source, capActive ? cap?.GetPosition() : source.Position);
-        merged.SourceKind = capActive ? "PlayerCap" : "SMTC";
-
-        if (!capActive)
-        {
-            merged.Lyrics = Array.Empty<LyricLine>();
-            merged.LyricSource = string.Empty;
-        }
-
-        lock (_gate)
-        {
-            _capActive = capActive;
-            _current = merged;
-        }
-
-        var key = BuildTrackKey(merged);
-        bool trackChanged = forceTrack || !string.Equals(key, _lastTrackKey, StringComparison.Ordinal);
-        bool stateChanged = forceState || _lastState != merged.State;
-
-        _lastTrackKey = key;
-        _lastState = merged.State;
-
-        if (trackChanged)
-            TrackChanged?.Invoke(merged);
-        if (stateChanged)
-            PlaybackStateChanged?.Invoke(merged.State);
-    }
-
-    private void PublishPosition()
-    {
-        if (!_panelVisible || _disposed) return;
-
-        TimeSpan position;
-        if (_capActive && _cap is { Connection: PlayerCapConnection.Connected })
-            position = _cap.GetPosition();
-        else
-            position = _smtc.CurrentTrack.Position;
-
-        var duration = _current.Duration;
-        if (duration > TimeSpan.Zero && position > duration)
-            position = duration;
-
+        var position = CurrentPosition;
+        if (_current.Duration > TimeSpan.Zero && position > _current.Duration)
+            position = _current.Duration;
+        if (!force && position == _lastPublishedPosition) return;
+        _lastPublishedPosition = position;
         PositionChanged?.Invoke(position);
     }
 
-    private static TrackInfo CloneWithPosition(TrackInfo source, TimeSpan? position) => new()
-    {
-        Title = source.Title,
-        Artist = source.Artist,
-        Album = source.Album,
-        Year = source.Year,
-        Duration = source.Duration,
-        Position = position ?? source.Position,
-        State = source.State,
-        ThumbnailBytes = source.ThumbnailBytes,
-        SourceAppId = source.SourceAppId,
-        SourceName = source.SourceName,
-        SourceKind = source.SourceKind,
-        LyricSource = source.LyricSource,
-        IsShuffleActive = source.IsShuffleActive,
-        SupportsShuffle = source.SupportsShuffle,
-        Lyrics = source.Lyrics
-    };
-
-    private static string BuildTrackKey(TrackInfo track) =>
-        $"{track.SourceKind}\u001f{track.SourceAppId}\u001f{track.Title}\u001f{track.Artist}\u001f" +
-        $"{track.Album}\u001f{track.Duration.Ticks}\u001f{track.Lyrics.Count}\u001f{track.State}";
-
     public void Dispose()
     {
-        if (_disposed) return;
-        _disposed = true;
-        Stop();
-        _smtc.Dispose();
+        _running = false;
         _ticker.Stop();
+        var bridge = _cap;
+        _cap = null;
+        bridge?.Dispose();
+        _smtc.Dispose();
     }
 }

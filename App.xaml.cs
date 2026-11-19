@@ -216,8 +216,10 @@ public partial class App : Application
             switch (notification)
             {
                 case NIN_SELECT:
-                case NIN_KEYSELECT:
                     ShowPanel();
+                    break;
+                case NIN_KEYSELECT:
+                    _mainWindow?.FocusPanelWindow();
                     break;
                 case (int)WM_LBUTTONDBLCLK:
                     ShowPanel();

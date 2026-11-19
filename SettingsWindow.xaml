@@ -5,58 +5,40 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         Title="MusicEdgeX 设置"
-        Width="460" Height="700"
+        Width="460" Height="700" MinHeight="420"
         WindowStyle="None"
         AllowsTransparency="True"
         Background="Transparent"
         ResizeMode="NoResize"
         ShowInTaskbar="False"
         WindowStartupLocation="CenterScreen"
-        FontFamily="Segoe UI Variable Text, Segoe UI"
+        FontFamily="Segoe UI Variable Text, Segoe UI, Microsoft YaHei UI"
         UseLayoutRounding="True"
         TextOptions.TextRenderingMode="Grayscale"
         TextOptions.TextFormattingMode="Display">
 
     <Window.Resources>
-        <SolidColorBrush x:Key="TextPrimary" Color="#FFF1ECE3"/>
-        <SolidColorBrush x:Key="TextSecondary" Color="#FFA09B92"/>
-        <SolidColorBrush x:Key="TextMuted" Color="#FF6A665F"/>
-        <SolidColorBrush x:Key="AccentBrush" Color="#FFC9604A"/>
-        <SolidColorBrush x:Key="CardBrush" Color="#0AFFFFFF"/>
-        <SolidColorBrush x:Key="CardBorder" Color="#14FFFFFF"/>
-
-        <DrawingBrush x:Key="GrainBrush" TileMode="Tile" Viewport="0,0,5,5"
-                      ViewportUnits="Absolute">
-            <DrawingBrush.Drawing>
-                <DrawingGroup>
-                    <GeometryDrawing Brush="#00000000" Geometry="M0,0 H5 V5 H0 Z"/>
-                    <GeometryDrawing Brush="#06FFFFFF" Geometry="M0,0 H1 V1 H0 Z"/>
-                </DrawingGroup>
-            </DrawingBrush.Drawing>
-        </DrawingBrush>
-
-        <Style x:Key="Kicker" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="{StaticResource TextMuted}"/>
-            <Setter Property="FontSize" Value="8.5"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Typography.Capitals" Value="AllSmallCaps"/>
-        </Style>
+        <SolidColorBrush x:Key="TextPrimary" Color="#F8F1FF"/>
+        <SolidColorBrush x:Key="TextSecondary" Color="#C7BBD9"/>
+        <SolidColorBrush x:Key="TextMuted" Color="#AAA0BE"/>
+        <SolidColorBrush x:Key="AccentBrush" Color="#CDB1FF"/>
+        <SolidColorBrush x:Key="LineBrush" Color="#463858"/>
 
         <Style x:Key="SectionTitle" TargetType="TextBlock">
             <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
-            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontSize" Value="16"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Margin" Value="0,3,0,10"/>
+            <Setter Property="Margin" Value="0,0,0,12"/>
         </Style>
 
         <Style x:Key="FieldLabel" TargetType="TextBlock">
             <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
-            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontSize" Value="13"/>
         </Style>
 
         <Style x:Key="HintText" TargetType="TextBlock">
             <Setter Property="Foreground" Value="{StaticResource TextMuted}"/>
-            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="FontSize" Value="12"/>
             <Setter Property="TextWrapping" Value="Wrap"/>
         </Style>
 
@@ -64,7 +46,6 @@
             <Setter Property="Width" Value="28"/>
             <Setter Property="Height" Value="28"/>
             <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Focusable" Value="False"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
@@ -83,12 +64,12 @@
 
         <Style x:Key="EdgeRadio" TargetType="RadioButton">
             <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
-            <Setter Property="FontSize" Value="11.5"/>
+            <Setter Property="FontSize" Value="13"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="RadioButton">
-                        <Border x:Name="Bg" Padding="18,7" CornerRadius="8"
+                        <Border x:Name="Bg" Padding="18,7" CornerRadius="10"
                                 Background="#0CFFFFFF" BorderBrush="#16FFFFFF" BorderThickness="1">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
@@ -97,10 +78,10 @@
                                 <Setter TargetName="Bg" Property="Background"
                                         Value="{StaticResource AccentBrush}"/>
                                 <Setter TargetName="Bg" Property="BorderBrush" Value="#00FFFFFF"/>
-                                <Setter Property="Foreground" Value="White"/>
+                                <Setter Property="Foreground" Value="#201A33"/>
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bg" Property="Background" Value="#14FFFFFF"/>
+                                <Setter TargetName="Bg" Property="Opacity" Value="0.85"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -110,7 +91,7 @@
 
         <Style x:Key="SwitchCheck" TargetType="CheckBox">
             <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
-            <Setter Property="FontSize" Value="11.5"/>
+            <Setter Property="FontSize" Value="13"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Margin" Value="0,0,0,12"/>
             <Setter Property="Template">
@@ -124,7 +105,7 @@
                             <ContentPresenter VerticalAlignment="Center"/>
                             <Border x:Name="Track" Grid.Column="1" Width="38" Height="22"
                                     CornerRadius="11" Background="#22FFFFFF">
-                                <Ellipse x:Name="Knob" Width="16" Height="16" Fill="#FFB4B4C6"
+                                <Ellipse x:Name="Knob" Width="16" Height="16" Fill="#C7BBD9"
                                          HorizontalAlignment="Left" Margin="3,0,0,0"/>
                             </Border>
                         </Grid>
@@ -134,7 +115,7 @@
                                         Value="{StaticResource AccentBrush}"/>
                                 <Setter TargetName="Knob" Property="HorizontalAlignment" Value="Right"/>
                                 <Setter TargetName="Knob" Property="Margin" Value="0,0,3,0"/>
-                                <Setter TargetName="Knob" Property="Fill" Value="White"/>
+                                <Setter TargetName="Knob" Property="Fill" Value="#201A33"/>
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="Track" Property="Opacity" Value="0.86"/>
@@ -201,13 +182,13 @@
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
             <Setter Property="CaretBrush" Value="{StaticResource TextPrimary}"/>
-            <Setter Property="FontSize" Value="11.5"/>
+            <Setter Property="FontSize" Value="13"/>
             <Setter Property="Padding" Value="9,0"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="TextBox">
-                        <Border x:Name="Bg" CornerRadius="8" Background="{TemplateBinding Background}"
+                        <Border x:Name="Bg" CornerRadius="10" Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}">
                             <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"
@@ -215,7 +196,7 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="Bg" Property="BorderBrush" Value="#77C9604A"/>
+                                <Setter TargetName="Bg" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -226,14 +207,14 @@
         <Style x:Key="PrimaryButton" TargetType="Button">
             <Setter Property="Height" Value="34"/>
             <Setter Property="Padding" Value="22,0"/>
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="FontSize" Value="11.5"/>
+            <Setter Property="Foreground" Value="#201A33"/>
+            <Setter Property="FontSize" Value="13"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="Bg" CornerRadius="9" Background="{StaticResource AccentBrush}">
+                        <Border x:Name="Bg" CornerRadius="10" Background="{StaticResource AccentBrush}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
@@ -254,7 +235,7 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="Bg" CornerRadius="9" Background="#0CFFFFFF"
+                        <Border x:Name="Bg" CornerRadius="10" Background="#302642"
                                 BorderBrush="#16FFFFFF" BorderThickness="1">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
@@ -299,158 +280,126 @@
         </Style>
     </Window.Resources>
 
-    <Border CornerRadius="16" BorderBrush="#1CFFFFFF" BorderThickness="1"
-            Background="#FF0D0D0F">
+    <Border CornerRadius="14" BorderBrush="{StaticResource LineBrush}" BorderThickness="1"
+            Background="#201A33">
         <Grid>
-            <Rectangle Fill="{StaticResource GrainBrush}" IsHitTestVisible="False"/>
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="62"/>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="66"/>
-                </Grid.RowDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="65"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="64"/>
+            </Grid.RowDefinitions>
 
-                <!-- Header -->
-                <Grid Grid.Row="0" Margin="22,0,18,0"
-                      Background="Transparent" MouseLeftButtonDown="Header_MouseLeftButtonDown">
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <Rectangle Width="3" Height="26" Fill="{StaticResource AccentBrush}"
-                                   RadiusX="1.5" RadiusY="1.5"/>
-                        <StackPanel Margin="10,0,0,0">
-                            <TextBlock Style="{StaticResource Kicker}" Text="MUSIC EDGE / SETTINGS"/>
-                            <TextBlock Text="设置" Foreground="{StaticResource TextPrimary}"
-                                       FontSize="15" FontWeight="SemiBold" Margin="0,2,0,0"/>
-                        </StackPanel>
-                    </StackPanel>
+            <Border BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1"
+                    Background="Transparent" MouseLeftButtonDown="Header_MouseLeftButtonDown">
+                <Grid Margin="24,0,18,0">
+                    <TextBlock Text="MusicEdgeX 设置" Foreground="{StaticResource TextPrimary}" FontSize="20"
+                               FontWeight="SemiBold" VerticalAlignment="Center"/>
                     <Button Style="{StaticResource IconButton}" HorizontalAlignment="Right"
-                            VerticalAlignment="Center" Click="BtnClose_Click">
-                        <Path Data="M19,6.41L17.59,5 12,10.59 6.41,5 5,6.41 10.59,12 5,17.59 6.41,19 12,13.41 17.59,19 19,17.59 13.41,12z"
-                              Fill="{StaticResource TextSecondary}" Width="11" Height="11" Stretch="Uniform"/>
+                            VerticalAlignment="Center" Click="BtnClose_Click"
+                            ToolTip="关闭设置" AutomationProperties.Name="关闭设置">
+                        <Path Data="M5,5 L19,19 M19,5 L5,19" Stroke="{StaticResource TextSecondary}"
+                              StrokeThickness="1.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                              Width="11" Height="11" Stretch="Uniform"/>
                     </Button>
                 </Grid>
+            </Border>
 
-                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
-                              HorizontalScrollBarVisibility="Disabled"
-                              Padding="0,0,6,0">
-                    <StackPanel Margin="22,4,16,8">
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Margin="24,20,23,20">
+                    <TextBlock Style="{StaticResource SectionTitle}" Text="歌词与播放器"/>
+                    <CheckBox x:Name="CbPlayerCap" Style="{StaticResource SwitchCheck}" Content="连接 PlayerCap 歌词桥接"/>
+                    <Grid Margin="0,5,0,0">
+                        <TextBlock Style="{StaticResource FieldLabel}" Text="歌词同步"/>
+                        <TextBlock x:Name="TxtLyricOffset" HorizontalAlignment="Right"
+                                   Foreground="{StaticResource TextPrimary}" FontSize="12" FontFamily="Consolas"/>
+                    </Grid>
+                    <Slider x:Name="SliderLyricOffset" Style="{StaticResource SettingsSlider}"
+                            AutomationProperties.Name="歌词同步偏移，毫秒"
+                            IsSnapToTickEnabled="True" SmallChange="100" LargeChange="500" Margin="0,3,0,0"/>
+                    <TextBlock Style="{StaticResource HintText}" Text="正值让歌词提前，负值让歌词延后。" Margin="0,0,0,14"/>
 
-                        <!-- 01 Edge and timing -->
-                        <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource CardBorder}"
-                                BorderThickness="1" CornerRadius="12" Padding="16,15,16,8" Margin="0,0,0,12">
-                            <StackPanel>
-                                <TextBlock Style="{StaticResource Kicker}" Text="01 / EDGE"/>
-                                <TextBlock Style="{StaticResource SectionTitle}" Text="边缘与交互"/>
-
-                                <TextBlock Style="{StaticResource FieldLabel}" Text="面板吸附位置"/>
-                                <StackPanel Orientation="Horizontal" Margin="0,7,0,16">
-                                    <RadioButton x:Name="RbRight" Style="{StaticResource EdgeRadio}"
-                                                 GroupName="Edge" Content="右侧边缘" IsChecked="True"/>
-                                    <RadioButton x:Name="RbLeft" Style="{StaticResource EdgeRadio}"
-                                                 GroupName="Edge" Content="左侧边缘" Margin="8,0,0,0"/>
-                                </StackPanel>
-
-                                <Grid>
-                                    <TextBlock Style="{StaticResource FieldLabel}" Text="悬停后展开延迟"/>
-                                    <TextBlock x:Name="TxtHoverValue" HorizontalAlignment="Right"
-                                               Foreground="{StaticResource TextPrimary}" FontSize="10"
-                                               FontFamily="Cascadia Mono, Consolas"/>
-                                </Grid>
-                                <Slider x:Name="SliderHover" Style="{StaticResource SettingsSlider}"
-                                        Minimum="100" Maximum="1200" TickFrequency="50"
-                                        IsSnapToTickEnabled="True" Margin="0,1,0,11"/>
-
-                                <Grid>
-                                    <TextBlock Style="{StaticResource FieldLabel}" Text="移开后收起预览"/>
-                                    <TextBlock x:Name="TxtCollapseValue" HorizontalAlignment="Right"
-                                               Foreground="{StaticResource TextPrimary}" FontSize="10"
-                                               FontFamily="Cascadia Mono, Consolas"/>
-                                </Grid>
-                                <Slider x:Name="SliderCollapse" Style="{StaticResource SettingsSlider}"
-                                        Minimum="200" Maximum="3000" TickFrequency="50"
-                                        IsSnapToTickEnabled="True" Margin="0,1,0,11"/>
-
-                                <Grid>
-                                    <TextBlock Style="{StaticResource FieldLabel}" Text="完全隐藏延迟"/>
-                                    <TextBlock x:Name="TxtHideValue" HorizontalAlignment="Right"
-                                               Foreground="{StaticResource TextPrimary}" FontSize="10"
-                                               FontFamily="Cascadia Mono, Consolas"/>
-                                </Grid>
-                                <Slider x:Name="SliderHide" Style="{StaticResource SettingsSlider}"
-                                        Minimum="500" Maximum="6000" TickFrequency="100"
-                                        IsSnapToTickEnabled="True" Margin="0,1,0,4"/>
-                            </StackPanel>
-                        </Border>
-
-                        <!-- 02 PlayerCap -->
-                        <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource CardBorder}"
-                                BorderThickness="1" CornerRadius="12" Padding="16,15,16,15" Margin="0,0,0,12">
-                            <StackPanel>
-                                <TextBlock Style="{StaticResource Kicker}" Text="02 / SOURCE"/>
-                                <TextBlock Style="{StaticResource SectionTitle}" Text="播放器接入"/>
-
-                                <CheckBox x:Name="CbPlayerCap" Style="{StaticResource SwitchCheck}"
-                                          Content="连接 PlayerCap 本地桥接"/>
-                                <TextBlock Style="{StaticResource HintText}" Margin="0,-4,0,12"
-                                           Text="PlayerCap 提供逐字歌词、精确进度和封面；未连接时自动回退到 SMTC。"/>
-
-                                <TextBlock Style="{StaticResource FieldLabel}" Text="服务地址" Margin="0,0,0,5"/>
-                                <TextBox x:Name="TxtCapHost" Style="{StaticResource SettingsTextBox}"
-                                         Text="127.0.0.1:8765"/>
-                                <TextBlock Style="{StaticResource FieldLabel}" Text="固定播放器（可选）"
-                                           Margin="0,12,0,5"/>
-                                <TextBox x:Name="TxtCapPlayer" Style="{StaticResource SettingsTextBox}"/>
-                                <TextBlock Style="{StaticResource HintText}" Margin="0,5,0,0"
-                                           Text="留空则跟随 PlayerCap 当前播放器，例如 qqmusic / spotify。"/>
-                            </StackPanel>
-                        </Border>
-
-                        <!-- 03 Behavior -->
-                        <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource CardBorder}"
-                                BorderThickness="1" CornerRadius="12" Padding="16,15,16,7" Margin="0,0,0,12">
-                            <StackPanel>
-                                <TextBlock Style="{StaticResource Kicker}" Text="03 / BEHAVIOR"/>
-                                <TextBlock Style="{StaticResource SectionTitle}" Text="行为"/>
-                                <CheckBox x:Name="CbFullscreen" Style="{StaticResource SwitchCheck}"
-                                          Content="全屏应用、游戏或演示时自动隐藏"/>
-                                <CheckBox x:Name="CbAutoStart" Style="{StaticResource SwitchCheck}"
-                                          Content="开机自动启动 MusicEdgeX"/>
-                                <CheckBox x:Name="CbStartPinned" Style="{StaticResource SwitchCheck}"
-                                          Content="启动后直接显示面板"/>
-                            </StackPanel>
-                        </Border>
-
-                        <!-- 04 About -->
-                        <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource CardBorder}"
-                                BorderThickness="1" CornerRadius="12" Padding="16,15,16,16">
-                            <StackPanel>
-                                <TextBlock Style="{StaticResource Kicker}" Text="04 / ABOUT"/>
-                                <TextBlock Style="{StaticResource SectionTitle}" Text="关于 MusicEdgeX"/>
-                                <TextBlock Style="{StaticResource HintText}"
-                                           Text="版本 2.0.0 · SMTC 零配置，PlayerCap 增强歌词。"/>
-                                <TextBlock Style="{StaticResource HintText}" Margin="0,7,0,0"
-                                           Text="QQ音乐、Spotify、网易云、Apple Music 等接入系统媒体会话的播放器均可使用。"/>
-                                <TextBlock Style="{StaticResource HintText}" Margin="0,7,0,0"
-                                           Text="配置保存在 %APPDATA%\MusicEdgeX\settings.json。"/>
-                            </StackPanel>
-                        </Border>
-                    </StackPanel>
-                </ScrollViewer>
-
-                <!-- Footer -->
-                <Border Grid.Row="2" BorderBrush="#12FFFFFF" BorderThickness="0,1,0,0">
-                    <Grid Margin="22,0,22,0">
-                        <Button x:Name="BtnReset" Style="{StaticResource GhostButton}" Content="恢复默认"
-                                HorizontalAlignment="Left" Width="92" Click="BtnReset_Click"/>
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
-                                    VerticalAlignment="Center">
-                            <Button Style="{StaticResource GhostButton}" Content="取消" Width="78"
-                                    Click="BtnCancel_Click" Margin="0,0,8,0"/>
-                            <Button Style="{StaticResource PrimaryButton}" Content="保存" Width="88"
-                                    Click="BtnSave_Click"/>
+                    <Grid Margin="0,0,0,6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="14"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <Label Content="服务地址" Target="{Binding ElementName=TxtCapHost}"
+                                   Foreground="{StaticResource TextSecondary}" Padding="0,0,0,5"/>
+                            <TextBox x:Name="TxtCapHost" Style="{StaticResource SettingsTextBox}"
+                                     AutomationProperties.Name="PlayerCap 服务地址"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <Label Content="桥接播放器（可选）" Target="{Binding ElementName=TxtCapPlayer}"
+                                   Foreground="{StaticResource TextSecondary}" Padding="0,0,0,5"/>
+                            <TextBox x:Name="TxtCapPlayer" Style="{StaticResource SettingsTextBox}"
+                                     AutomationProperties.Name="桥接播放器"/>
                         </StackPanel>
                     </Grid>
-                </Border>
-            </Grid>
+                    <TextBlock Style="{StaticResource HintText}"
+                               Text="播放器留空时跟随 PlayerCap。填入 qqmusic 可固定桥接 QQ 音乐。"/>
+
+                    <Border BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,0,0"
+                            Margin="0,20,0,0" Padding="0,17,0,0">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource SectionTitle}" Text="屏幕边缘"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
+                                <RadioButton x:Name="RbLeft" Style="{StaticResource EdgeRadio}" GroupName="Edge" Content="左侧边缘"/>
+                                <RadioButton x:Name="RbRight" Style="{StaticResource EdgeRadio}" GroupName="Edge" Content="右侧边缘" Margin="8,0,0,0"/>
+                            </StackPanel>
+                            <Grid>
+                                <TextBlock Style="{StaticResource FieldLabel}" Text="悬停后展开延迟"/>
+                                <TextBlock x:Name="TxtHoverValue" HorizontalAlignment="Right"
+                                           Foreground="{StaticResource TextPrimary}" FontSize="12" FontFamily="Consolas"/>
+                            </Grid>
+                            <Slider x:Name="SliderHover" Style="{StaticResource SettingsSlider}"
+                                    AutomationProperties.Name="悬停后展开延迟"
+                                    Minimum="100" Maximum="1200" TickFrequency="50" SmallChange="50"
+                                    IsSnapToTickEnabled="True" Margin="0,3,0,9"/>
+                            <Grid>
+                                <TextBlock Style="{StaticResource FieldLabel}" Text="移开后收起延迟"/>
+                                <TextBlock x:Name="TxtCollapseValue" HorizontalAlignment="Right"
+                                           Foreground="{StaticResource TextPrimary}" FontSize="12" FontFamily="Consolas"/>
+                            </Grid>
+                            <Slider x:Name="SliderCollapse" Style="{StaticResource SettingsSlider}"
+                                    AutomationProperties.Name="移开后收起延迟"
+                                    Minimum="200" Maximum="3000" TickFrequency="50" SmallChange="50"
+                                    IsSnapToTickEnabled="True" Margin="0,3,0,9"/>
+                            <Grid>
+                                <TextBlock Style="{StaticResource FieldLabel}" Text="完全隐藏延迟"/>
+                                <TextBlock x:Name="TxtHideValue" HorizontalAlignment="Right"
+                                           Foreground="{StaticResource TextPrimary}" FontSize="12" FontFamily="Consolas"/>
+                            </Grid>
+                            <Slider x:Name="SliderHide" Style="{StaticResource SettingsSlider}"
+                                    AutomationProperties.Name="完全隐藏延迟"
+                                    Minimum="500" Maximum="6000" TickFrequency="100" SmallChange="100"
+                                    IsSnapToTickEnabled="True" Margin="0,3,0,0"/>
+                        </StackPanel>
+                    </Border>
+
+                    <Border BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,0,0"
+                            Margin="0,17,0,0" Padding="0,17,0,0">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource SectionTitle}" Text="启动与全屏"/>
+                            <CheckBox x:Name="CbFullscreen" Style="{StaticResource SwitchCheck}" Content="全屏时自动隐藏"/>
+                            <CheckBox x:Name="CbAutoStart" Style="{StaticResource SwitchCheck}" Content="开机自动启动 MusicEdgeX"/>
+                            <CheckBox x:Name="CbStartPinned" Style="{StaticResource SwitchCheck}" Content="启动后直接显示面板"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <Border Grid.Row="2" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,0,0">
+                <DockPanel Margin="24,0" LastChildFill="False">
+                    <Button Style="{StaticResource GhostButton}" Content="恢复默认" DockPanel.Dock="Left"
+                            Width="92" Click="BtnReset_Click"/>
+                    <Button Style="{StaticResource PrimaryButton}" Content="保存设置" DockPanel.Dock="Right"
+                            Width="100" Click="BtnSave_Click" IsDefault="True"/>
+                    <Button Style="{StaticResource GhostButton}" Content="取消" DockPanel.Dock="Right"
+                            Width="70" Margin="0,0,8,0" IsCancel="True"/>
+                </DockPanel>
+            </Border>
         </Grid>
     </Border>
 </Window>
